@@ -12,7 +12,6 @@ import javax.swing.JFrame
 
 class MainWindow : JFrame() {
     private val overlay = GameOverlay()
-    private val overlayToggle = JCheckBox("Show Overlay")
     private val gd = GameDetector()
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
@@ -28,18 +27,10 @@ class MainWindow : JFrame() {
                 .defaultScreenDevice.defaultConfiguration.bounds
         )
         overlay.isVisible = false
-
-        overlayToggle.isSelected = overlay.isVisible
-        overlayToggle.addItemListener {
-            toggleOverlay()
-        }
-
-        add(overlayToggle)
         scope.launch {
             while (isActive) {
                 gd.detectGame()
-                //overlay.isVisible = gd.isForeground()
-                //overlayToggle.isSelected = overlay.isVisible
+                overlay.isVisible = gd.isForeground()
                 delay(5_000)
             }
         }
@@ -50,9 +41,5 @@ class MainWindow : JFrame() {
         super.dispose()
     }
 
-    private fun toggleOverlay() {
-        overlay.isVisible = !overlay.isVisible
-        overlayToggle.isSelected = overlay.isVisible
-    }
 
 }

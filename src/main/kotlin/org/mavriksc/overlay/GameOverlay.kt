@@ -4,6 +4,11 @@ import java.awt.*
 import java.awt.geom.Ellipse2D
 import javax.swing.JFrame
 
+
+//this is for my ui. will need to get scale of hud and map from client and resolution in the future
+//spell top left locations["1079,1325","1137,1325","1196,1325","1255,1325"] 20wx10h
+//map 372 × 373 @ (2188, 1067) 370x370 in from bottom right 350x350 in size
+
 class GameOverlay: JFrame() {
     init {
         isUndecorated = true
