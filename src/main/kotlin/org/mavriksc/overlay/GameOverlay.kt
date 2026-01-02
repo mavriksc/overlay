@@ -53,7 +53,11 @@ class GameOverlay : JFrame() {
         focusableWindowState = false
         //start timers
         Timer(config.dodgeTimer) {
-            dodgeDir = Random.nextBoolean()
+            val next = Random.nextBoolean()
+            if (next != dodgeDir) {
+                dodgeDir = next
+                repaint()
+            }
         }.start()
 
         Timer(config.mapTimer) {
