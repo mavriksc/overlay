@@ -9,6 +9,16 @@ import javax.swing.JFrame
 //spell top left locations["1079,1325","1137,1325","1196,1325","1255,1325"] 20wx10h
 //map 372 × 373 @ (2188, 1067) 370x370 in from bottom right 350x350 in size
 
+data class OverlayConfig(
+    var enableSpellPacing: Boolean = true,
+    var enableMapLookTimer: Boolean = true,
+    var enableDodgeDirection: Boolean = true,
+    var mapRect: Rectangle,
+    var northColor: Color = Color.RED,
+    var southColor: Color = Color.BLUE,
+    var eastColor: Color = Color.GREEN,
+    var westColor: Color = Color.YELLOW
+)
 class GameOverlay: JFrame() {
     init {
         isUndecorated = true
