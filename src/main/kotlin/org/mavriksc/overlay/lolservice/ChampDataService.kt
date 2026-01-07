@@ -25,7 +25,7 @@ class ChampDataService {
     //fetches champion list and spell info and will provide spell costs for a champion
     init {
         if (!hasCurrentVersionInfo()) {
-            val champs = getChampions()
+            val champs = updateChampionList()
             val champData = champs.map { champ -> getChampionData(champ) }
             cache = Version(version, champData)
             saveCache()
@@ -53,7 +53,7 @@ class ChampDataService {
         return cache?.let { it.version == version } ?: false
     }
 
-    private fun getChampions(): List<String> {
+    private fun updateChampionList(): List<String> {
         val champsCall = Request.Builder().url(championsUrl).build()
         client.newCall(champsCall).execute().use { response ->
             val body = response.body.string()
@@ -84,6 +84,12 @@ class ChampDataService {
         val costBurn = spell["costBurn"]!!.jsonPrimitive.content.split("/").map { it.toFloat() }
         return Ability(name, cooldown, cost, costBurn)
     }
+
+    fun getChampion(champ: String): Champion? {
+        return cache?.champions?.find { it.name == champ }
+    }
+
+    fun getChampionList(): List<String> = cache?.champions?.map { it.name } ?: emptyList()
 }
 
 fun main() {
