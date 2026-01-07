@@ -1,10 +1,8 @@
 package org.mavriksc.overlay
 
 import java.awt.*
-import java.awt.geom.Ellipse2D
 import javax.swing.JFrame
 import javax.swing.Timer
-import kotlin.Pair
 import kotlin.random.Random
 
 
@@ -88,7 +86,6 @@ class GameOverlay : JFrame() {
 
     private fun drawMapLook(g2d: Graphics2D) {
         g2d.color = config.mapFlashColor
-        g2d.drawRect(config.mapRect.x, config.mapRect.y, config.mapRect.width, config.mapRect.height)
         g2d.fillRect(config.mapRect.x, config.mapRect.y, config.mapRect.width, config.mapRect.height)
     }
 
@@ -114,5 +111,11 @@ class GameOverlay : JFrame() {
         }
     }
 
-    private fun drawSpellPacing(g2d: Graphics2D) {}
+    private fun drawSpellPacing(g2d: Graphics2D) {
+        //blue, can use all spells off cooldown until goal
+        //green, can use at least 1 rotation of all spells without getting below burn rate
+        //yellow, can use spell without getting below burn rate
+        // orange, can use spell but is below burn rate, should pace down
+        // red cant cast all spells
+    }
 }

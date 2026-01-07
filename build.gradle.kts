@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "2.2.21"
+    kotlin("plugin.serialization") version "2.3.0"
 }
 
 group = "org.mavriksc"
@@ -16,6 +17,9 @@ dependencies {
     implementation("net.java.dev.jna:jna-platform:5.14.0")
     // Coroutines for background tasks
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    implementation("com.squareup.okhttp3:okhttp:5.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0-RC")
+
 }
 
 kotlin {
