@@ -2,9 +2,9 @@ package org.mavriksc.overlay.lolservice
 
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
-import org.mavriksc.overlay.fileservice.getText
-import org.mavriksc.overlay.fileservice.writeToFile
+import org.mavriksc.overlay.getText
 import org.mavriksc.overlay.toRequest
+import org.mavriksc.overlay.writeToFile
 
 
 class ChampDataService {
