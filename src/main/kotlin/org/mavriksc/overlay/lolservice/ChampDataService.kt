@@ -1,15 +1,10 @@
 package org.mavriksc.overlay.lolservice
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.mavriksc.overlay.fileservice.getText
 import org.mavriksc.overlay.fileservice.writeToFile
+import org.mavriksc.overlay.toRequest
 
 
 class ChampDataService {
@@ -41,7 +36,7 @@ class ChampDataService {
     }
 
     private fun getCurrentVersion(): String {
-        val versionCall = Request.Builder().url(versionsUrl).build()
+        val versionCall = versionsUrl.toRequest()
         client.newCall(versionCall).execute().use { response ->
             val body = response.body.string()
             val array: List<String> = Json.decodeFromString(body)
@@ -54,7 +49,7 @@ class ChampDataService {
     }
 
     private fun updateChampionList(): List<String> {
-        val champsCall = Request.Builder().url(championsUrl).build()
+        val champsCall = championsUrl.toRequest()
         client.newCall(champsCall).execute().use { response ->
             val body = response.body.string()
             val data = Json.parseToJsonElement(body).jsonObject["data"]!! as JsonObject
@@ -63,7 +58,7 @@ class ChampDataService {
     }
 
     private fun getChampionData(champ: String): Champion {
-        val champCall = Request.Builder().url(baseURL + "champion/$champ.json").build()
+        val champCall = "${baseURL}champion/$champ.json".toRequest()
         client.newCall(champCall).execute().use { response ->
             val body = response.body.string()
             val abilities = getAbilityData(body, champ)
@@ -93,5 +88,7 @@ class ChampDataService {
 }
 
 fun main() {
-    ChampDataService()
+    val cdService = ChampDataService()
+    val randChamp = cdService.getChampionList().random()
+    println(cdService.getChampion(randChamp))
 }

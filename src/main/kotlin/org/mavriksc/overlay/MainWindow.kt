@@ -11,6 +11,13 @@ import javax.swing.JCheckBox
 import javax.swing.JFrame
 
 class MainWindow : JFrame() {
+    // CONTROLS:
+    //  to start/stop polling for champion data
+    //  to show the status of the game
+    //  for activation of the 3 tools
+    //  for setting the time limit for the spell burn down
+    //  Dodge dir and map look timer color and rates
+
     private val overlay = GameOverlay()
     private val gd = GameDetector()
     private val job = Job()
