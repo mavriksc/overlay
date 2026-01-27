@@ -61,13 +61,23 @@ class ChampDataService {
         val champCall = "${baseURL}champion/$champ.json".toRequest()
         client.newCall(champCall).execute().use { response ->
             val body = response.body.string()
-            val abilities = getAbilityData(body, champ)
-            return Champion(champ, abilities)
+            val data = Json.parseToJsonElement(body).jsonObject["data"]!!.jsonObject[champ]!! as JsonObject
+            val abilities = getAbilityData(data)
+            val stats = getStats(data)
+            return Champion(champ, stats, abilities)
         }
     }
 
-    private fun getAbilityData(body: String, champ: String): List<Ability> {
-        val data = Json.parseToJsonElement(body).jsonObject["data"]!!.jsonObject[champ]!! as JsonObject
+    private fun getStats(data: JsonObject): Stats {
+        val stats = data["stats"]!! as JsonObject
+        val mp = stats["mp"]!!.jsonPrimitive.float
+        val mpPerLevel = stats["mpperlevel"]!!.jsonPrimitive.float
+        val mpRegen = stats["mpregen"]!!.jsonPrimitive.float
+        val mpRegenPerLevel = stats["mpregenperlevel"]!!.jsonPrimitive.float
+        return Stats(mp, mpPerLevel, mpRegen, mpRegenPerLevel)
+    }
+
+    private fun getAbilityData(data: JsonObject): List<Ability> {
         val spells = data["spells"]!! as JsonArray
         return spells.map { spell -> parseSpell(spell as JsonObject) }
     }

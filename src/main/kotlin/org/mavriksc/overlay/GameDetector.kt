@@ -16,10 +16,10 @@ class GameDetector {
     fun detectGame() {
         try {
             isGameRunning()
-            println("GameDetector: Game running status: ${isRunning()}")
+           // println("GameDetector: Game running status: ${isRunning()}")
             if (isRunning()) {
                 getForegroundPid()
-                println("GameDetector: Is Game Foreground: ${isForeground()}")
+            //    println("GameDetector: Is Game Foreground: ${isForeground()}")
             }
         } catch (t: Throwable) {
             System.err.println("GameDetector failed to enumerate processes: ${t.message}")
@@ -31,13 +31,13 @@ class GameDetector {
         val fp = IntByReference()
         User32.INSTANCE.GetWindowThreadProcessId(foregroundWindow, fp)
         foregroundPid = fp.value
-        println("GameDetector: Foreground window PID: $foregroundPid")
+       // println("GameDetector: Foreground window PID: $foregroundPid")
     }
 
     private fun isGameRunning() {
         val processes = enumerateProcesses()
         gamePid = processes.find { it.second.contains(game, ignoreCase = true) }?.first
-        println("GameDetector: Game pid: $gamePid")
+        //println("GameDetector: Game pid: $gamePid")
     }
 
     /**
