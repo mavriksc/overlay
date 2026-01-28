@@ -7,13 +7,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 
 
 class GameDetector {
-    private val client = OkHttpClient().newBuilder().callTimeout(1, TimeUnit.SECONDS).build()
-    private val activePlayerRequest = "https://127.0.0.1:2999/liveclientdata/eventdata".toRequest()
+    private val client = getOkHttpClientForGameClient()
+    private val gameUrl = "https://127.0.0.1:2999/liveclientdata/eventdata"
     private val game = "League of Legends.exe"
     private val pollingJob = Job()
     private val scope = CoroutineScope(Dispatchers.Default + pollingJob)
@@ -42,20 +40,21 @@ class GameDetector {
         }
     }
 
-    private suspend fun checkGameStarted() {
+    private fun startGameStartedCheck() {
+        if (gameStartedJob?.isActive == true) return
+        gameStartedJob = scope.launch {
+            checkGameStarted()
+        }
+    }
+
+    private fun checkGameStarted() {
         if (!isRunning()) {
             gameStarted = false
             return
         }
         if (gameStarted) return
-        val response = client.newCall(activePlayerRequest).execute()
-        gameStarted = response.isSuccessful
-    }
-
-    private fun startGameStartedCheck() {
-        if (gameStartedJob?.isActive == true) return
-        gameStartedJob = scope.launch {
-            checkGameStarted()
+        client.newCall(gameUrl.toRequest()).execute().use {
+            gameStarted = it.isSuccessful
         }
     }
 
@@ -64,13 +63,11 @@ class GameDetector {
         val fp = IntByReference()
         User32.INSTANCE.GetWindowThreadProcessId(foregroundWindow, fp)
         foregroundPid = fp.value
-        // println("GameDetector: Foreground window PID: $foregroundPid")
     }
 
     private fun isGameRunning() {
         val processes = enumerateProcesses()
         gamePid = processes.find { it.second.contains(game, ignoreCase = true) }?.first
-        //println("GameDetector: Game pid: $gamePid")
     }
 
     /**

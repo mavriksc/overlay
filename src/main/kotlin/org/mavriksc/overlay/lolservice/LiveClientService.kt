@@ -5,9 +5,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.*
-import okhttp3.OkHttpClient
+import org.mavriksc.overlay.getOkHttpClientForGameClient
 import org.mavriksc.overlay.toRequest
 import java.io.Closeable
+import java.util.concurrent.TimeUnit
 
 class LiveClientService : Closeable {
     // Subscribe to game start and end events for the starting and stopping the UI
@@ -16,8 +17,8 @@ class LiveClientService : Closeable {
     // 2 methods for getting active champ.
     // activeplayer api will have the champ name in the ability field `id`: "{champ}{abilityKey}" probably the easiest
     // get all players and match the player name versus the active player name
-    private val client = OkHttpClient()
-    private val activePlayerURL = "http://localhost:2999/liveclientdata/activeplayer"
+    private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
+    private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
     private val _activePlayerData = MutableStateFlow<ActivePlayerData?>(null)
     private val pollingJob = Job()
@@ -37,13 +38,16 @@ class LiveClientService : Closeable {
     }
 
     fun fetchActivePlayer() {
-        val activePlayerRequest = activePlayerURL.toRequest()
-        client.newCall(activePlayerRequest).execute().use { response ->
-            val body = response.body.string()
-            val bodyObject = Json.parseToJsonElement(body).jsonObject
-            val stats = parseStats(bodyObject)
-            _activePlayerData.value = stats
-            println("Fetched active player data: $stats")
+        try {
+            client.newCall(activePlayerURL.toRequest()).execute().use { response ->
+                val body = response.body.string()
+                val bodyObject = Json.parseToJsonElement(body).jsonObject
+                val stats = parseStats(bodyObject)
+                _activePlayerData.value = stats
+                println("Fetched active player data: $stats")
+            }
+        } catch (e: Exception) {
+            println("Failed to fetch active player data: ${e.message}")
         }
     }
 
