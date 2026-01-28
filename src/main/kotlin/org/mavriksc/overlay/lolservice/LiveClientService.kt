@@ -1,29 +1,15 @@
 package org.mavriksc.overlay.lolservice
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.float
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
 import org.mavriksc.overlay.toRequest
 import java.io.Closeable
 
 class LiveClientService : Closeable {
-
     // Subscribe to game start and end events for the starting and stopping the UI
     // poll active player data for calculating spell burndown
     // CDR calculation: ActualCooldown = Cooldown * (100/(100 + AbilityHase))
@@ -34,13 +20,11 @@ class LiveClientService : Closeable {
     private val activePlayerURL = "http://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
     private val _activePlayerData = MutableStateFlow<ActivePlayerData?>(null)
+    private val pollingJob = Job()
     val activePlayerData: StateFlow<ActivePlayerData?> = _activePlayerData.asStateFlow()
-    private var pollingJob: Job? = null
 
-
-    fun startPolling() {
-        stopPolling()
-        pollingJob = MainScope().launch {
+    init {
+        CoroutineScope(Dispatchers.Default + pollingJob).launch {
             while (isActive) {
                 fetchActivePlayer()
                 delay(1_000)
@@ -48,13 +32,8 @@ class LiveClientService : Closeable {
         }
     }
 
-    fun stopPolling() {
-        pollingJob?.cancel()
-        pollingJob = null
-    }
-
     override fun close() {
-        stopPolling()
+        pollingJob.cancel()
     }
 
     fun fetchActivePlayer(): String {
@@ -68,7 +47,6 @@ class LiveClientService : Closeable {
         }
     }
 
-
     private fun parseStats(bodyObject: JsonObject): ActivePlayerData {
         val championStats = bodyObject["championStats"]!!.jsonObject
         val abilityHaste = championStats["abilityHaste"]!!.jsonPrimitive.float
@@ -77,13 +55,16 @@ class LiveClientService : Closeable {
         val resourceValue = championStats["resourceValue"]!!.jsonPrimitive.float
         val abilities = parseAbilities(bodyObject)
         val name = bodyObject["abilities"]!!.jsonObject["Q"]!!.jsonObject["id"]!!.jsonPrimitive.content.dropLast(1)
-        return ActivePlayerData(name,
+        return ActivePlayerData(
+            name,
             resourceMax,
             resourceValue,
             resourceRegenRate,
             abilityHaste,
-            abilities)
+            abilities
+        )
     }
+
     private fun parseAbilities(bodyObject: JsonObject): Map<String, Int> {
         val abilitiesMap = bodyObject["abilities"]!!.jsonObject
         return abilityKeys.associate { key ->

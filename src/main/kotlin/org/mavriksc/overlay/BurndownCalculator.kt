@@ -1,6 +1,7 @@
 package org.mavriksc.overlay
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
@@ -12,12 +13,11 @@ import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.Color
 import java.io.Closeable
 
-class BurndownCalculator(
-    private val activePlayerData: Flow<ActivePlayerData?>,
-    private val champDataService: ChampDataService,
-    private val liveClientService: LiveClientService
-) : Closeable {
+class BurndownCalculator: Closeable {
+    private val champDataService: ChampDataService = ChampDataService()
+    private val liveClientService: LiveClientService = LiveClientService()
     private var job: Job? = null
+    private val activePlayerData: Flow<ActivePlayerData?> = liveClientService.activePlayerData
     private var latestActivePlayer: ActivePlayerData? = null
     private var champion: Champion? = null
     var qSignal: Color = Color.RED
@@ -32,7 +32,7 @@ class BurndownCalculator(
 
     fun start() {
         if (job != null) return
-        job = MainScope().launch {
+        job = CoroutineScope(Dispatchers.Default).launch {
             activePlayerData.collect { data ->
                 if (data == null) return@collect
                 latestActivePlayer = data

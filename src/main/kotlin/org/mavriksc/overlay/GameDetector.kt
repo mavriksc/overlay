@@ -3,27 +3,44 @@ package org.mavriksc.overlay
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.*
 import com.sun.jna.ptr.IntByReference
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 
 class GameDetector {
+    private val client = OkHttpClient().newBuilder().callTimeout(1, TimeUnit.SECONDS).build()
+    private val activePlayerRequest = "https://127.0.0.1:2999/liveclientdata/eventdata".toRequest()
     private val game = "League of Legends.exe"
     private var gamePid: Int? = null
     private var foregroundPid: Int? = null
+    private var gameStarted = false
 
     fun isRunning() = gamePid != null
     fun isForeground() = gamePid != null && gamePid == foregroundPid
+    fun gameStarted() = gameStarted
 
     fun detectGame() {
         try {
             isGameRunning()
-           // println("GameDetector: Game running status: ${isRunning()}")
+            // println("GameDetector: Game running status: ${isRunning()}")
             if (isRunning()) {
                 getForegroundPid()
-            //    println("GameDetector: Is Game Foreground: ${isForeground()}")
+                //checkGameStarted()
+                //    println("GameDetector: Is Game Foreground: ${isForeground()}")
             }
         } catch (t: Throwable) {
             System.err.println("GameDetector failed to enumerate processes: ${t.message}")
         }
+    }
+
+    private suspend fun checkGameStarted() {
+        if (!isRunning()) {
+            gameStarted = false
+            return
+        }
+        if (gameStarted) return
+        val response = client.newCall(activePlayerRequest).execute()
+        gameStarted = response.isSuccessful
     }
 
     private fun getForegroundPid() {
@@ -31,7 +48,7 @@ class GameDetector {
         val fp = IntByReference()
         User32.INSTANCE.GetWindowThreadProcessId(foregroundWindow, fp)
         foregroundPid = fp.value
-       // println("GameDetector: Foreground window PID: $foregroundPid")
+        // println("GameDetector: Foreground window PID: $foregroundPid")
     }
 
     private fun isGameRunning() {

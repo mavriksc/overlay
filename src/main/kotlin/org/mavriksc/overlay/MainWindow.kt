@@ -25,10 +25,10 @@ class MainWindow : JFrame() {
 
     private val overlay = GameOverlay()
     private val gd = GameDetector()
-    private var lcs = LiveClientService()
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
     private var gameJustStarted = true
+    private var burndownCalculator: BurndownCalculator? = null
 
 
     init {
@@ -46,8 +46,10 @@ class MainWindow : JFrame() {
             while (isActive) {
                 gd.detectGame()
                 if (gd.isRunning() && gameJustStarted) {
-                    lcs.startPolling()
-                    gameJustStarted = false
+                    if (gd.gameStarted()) {
+                        burndownCalculator = BurndownCalculator()
+                        gameJustStarted = false
+                    }
                 }
                 overlay.isVisible = gd.isForeground()
                 delay(1_000)
