@@ -3,6 +3,10 @@ package org.mavriksc.overlay
 import com.sun.jna.Pointer
 import com.sun.jna.platform.win32.*
 import com.sun.jna.ptr.IntByReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -11,9 +15,12 @@ class GameDetector {
     private val client = OkHttpClient().newBuilder().callTimeout(1, TimeUnit.SECONDS).build()
     private val activePlayerRequest = "https://127.0.0.1:2999/liveclientdata/eventdata".toRequest()
     private val game = "League of Legends.exe"
+    private val pollingJob = Job()
+    private val scope = CoroutineScope(Dispatchers.Default + pollingJob)
     private var gamePid: Int? = null
     private var foregroundPid: Int? = null
     private var gameStarted = false
+    private var gameStartedJob: Job? = null
 
     fun isRunning() = gamePid != null
     fun isForeground() = gamePid != null && gamePid == foregroundPid
@@ -24,6 +31,11 @@ class GameDetector {
             isGameRunning()
             if (isRunning()) {
                 getForegroundPid()
+                startGameStartedCheck()
+            } else {
+                gameStarted = false
+                gameStartedJob?.cancel()
+                gameStartedJob = null
             }
         } catch (t: Throwable) {
             System.err.println("GameDetector failed to enumerate processes: ${t.message}")
@@ -38,6 +50,13 @@ class GameDetector {
         if (gameStarted) return
         val response = client.newCall(activePlayerRequest).execute()
         gameStarted = response.isSuccessful
+    }
+
+    private fun startGameStartedCheck() {
+        if (gameStartedJob?.isActive == true) return
+        gameStartedJob = scope.launch {
+            checkGameStarted()
+        }
     }
 
     private fun getForegroundPid() {
