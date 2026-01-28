@@ -1,8 +1,28 @@
 package org.mavriksc.overlay.lolservice
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.float
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
+import org.mavriksc.overlay.toRequest
+import java.io.Closeable
 
-class LiveClientService() {
+class LiveClientService : Closeable {
 
     // Subscribe to game start and end events for the starting and stopping the UI
     // poll active player data for calculating spell burndown
@@ -13,10 +33,65 @@ class LiveClientService() {
     private val client = OkHttpClient()
     private val activePlayerURL = "http://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
+    private val _activePlayerData = MutableStateFlow<ActivePlayerData?>(null)
+    val activePlayerData: StateFlow<ActivePlayerData?> = _activePlayerData.asStateFlow()
+    private var pollingJob: Job? = null
 
 
     fun startPolling() {
-        TODO("Not yet implemented")
+        stopPolling()
+        pollingJob = MainScope().launch {
+            while (isActive) {
+                fetchActivePlayer()
+                delay(1_000)
+            }
+        }
+    }
+
+    fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
+    }
+
+    override fun close() {
+        stopPolling()
+    }
+
+    fun fetchActivePlayer(): String {
+        val activePlayerRequest = activePlayerURL.toRequest()
+        client.newCall(activePlayerRequest).execute().use { response ->
+            val body = response.body.string()
+            val bodyObject = Json.parseToJsonElement(body).jsonObject
+            val stats = parseStats(bodyObject)
+            _activePlayerData.value = stats
+            return body
+        }
+    }
+
+
+    private fun parseStats(bodyObject: JsonObject): ActivePlayerData {
+        val championStats = bodyObject["championStats"]!!.jsonObject
+        val abilityHaste = championStats["abilityHaste"]!!.jsonPrimitive.float
+        val resourceMax = championStats["resourceMax"]!!.jsonPrimitive.float
+        val resourceRegenRate = championStats["resourceRegenRate"]!!.jsonPrimitive.float
+        val resourceValue = championStats["resourceValue"]!!.jsonPrimitive.float
+        val abilities = parseAbilities(bodyObject)
+        val name = bodyObject["abilities"]!!.jsonObject["Q"]!!.jsonObject["id"]!!.jsonPrimitive.content.dropLast(1)
+        return ActivePlayerData(name,
+            resourceMax,
+            resourceValue,
+            resourceRegenRate,
+            abilityHaste,
+            abilities)
+    }
+    private fun parseAbilities(bodyObject: JsonObject): Map<String, Int> {
+        val abilitiesMap = bodyObject["abilities"]!!.jsonObject
+        return abilityKeys.associate { key ->
+            val abilityObject = abilitiesMap[key]?.jsonObject!!
+            val level = abilityObject["abilityLevel"]!!.jsonPrimitive.int
+            val name = abilityObject["displayName"]!!.jsonPrimitive.content
+            Pair(name, level)
+        }
     }
 
 }

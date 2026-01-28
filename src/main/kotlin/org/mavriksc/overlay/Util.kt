@@ -13,7 +13,7 @@ fun String.writeToFile(text: String) {
     file.writeText(text)
 }
 
-fun String.getText(): String? {
+fun String.getTextFromFile(): String? {
     return try {
         Files.readString(Path(this))
     } catch (_: Exception) {

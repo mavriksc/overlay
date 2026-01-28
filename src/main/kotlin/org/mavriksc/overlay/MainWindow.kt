@@ -28,6 +28,7 @@ class MainWindow : JFrame() {
     private var lcs = LiveClientService()
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
+    private var gameJustStarted = true
 
 
     init {
@@ -44,8 +45,10 @@ class MainWindow : JFrame() {
         scope.launch {
             while (isActive) {
                 gd.detectGame()
-                // if is gd.isRunning() start lcs polling
-                //if (gd.isRunning()) lcs.startPolling()
+                if (gd.isRunning() && gameJustStarted) {
+                    lcs.startPolling()
+                    gameJustStarted = false
+                }
                 overlay.isVisible = gd.isForeground()
                 delay(1_000)
             }

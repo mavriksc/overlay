@@ -2,7 +2,7 @@ package org.mavriksc.overlay.lolservice
 
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
-import org.mavriksc.overlay.getText
+import org.mavriksc.overlay.getTextFromFile
 import org.mavriksc.overlay.toRequest
 import org.mavriksc.overlay.writeToFile
 
@@ -28,7 +28,7 @@ class ChampDataService {
     }
 
     private fun loadCache(): Version? {
-        return datFile.getText()?.let { Json.decodeFromString(it) }
+        return datFile.getTextFromFile()?.let { Json.decodeFromString(it) }
     }
 
     private fun saveCache() {
