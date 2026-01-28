@@ -11,12 +11,9 @@ import java.io.Closeable
 import java.util.concurrent.TimeUnit
 
 class LiveClientService : Closeable {
-    // Subscribe to game start and end events for the starting and stopping the UI
-    // poll active player data for calculating spell burndown
-    // CDR calculation: ActualCooldown = Cooldown * (100/(100 + AbilityHase))
-    // 2 methods for getting active champ.
-    // activeplayer api will have the champ name in the ability field `id`: "{champ}{abilityKey}" probably the easiest
-    // get all players and match the player name versus the active player name
+    // basically done here
+    // when the client starts to fail it means the game is closed. terminate the flow
+    // upstream when the flow terminates, propagate to main window and update gameWasNotRunningLastCheck
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
@@ -44,10 +41,10 @@ class LiveClientService : Closeable {
                 val bodyObject = Json.parseToJsonElement(body).jsonObject
                 val stats = parseStats(bodyObject)
                 _activePlayerData.value = stats
-                println("Fetched active player data: $stats")
             }
         } catch (e: Exception) {
             println("Failed to fetch active player data: ${e.message}")
+            pollingJob.cancel()
         }
     }
 

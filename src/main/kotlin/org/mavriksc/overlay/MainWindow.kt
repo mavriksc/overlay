@@ -1,18 +1,8 @@
 package org.mavriksc.overlay
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import java.awt.GraphicsEnvironment
-import javax.swing.BoxLayout
-import javax.swing.JButton
-import javax.swing.JCheckBox
-import javax.swing.JColorChooser
-import javax.swing.JFrame
-import javax.swing.JPanel
+import javax.swing.*
 
 class MainWindow : JFrame() {
     // CONTROLS:
@@ -26,7 +16,7 @@ class MainWindow : JFrame() {
     private val gd = GameDetector()
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
-    private var gameWasntRunningLastCheck = true
+    private var gameWasNotRunningLastCheck = true
     private var burndownCalculator: BurndownCalculator? = null
 
 
@@ -44,10 +34,17 @@ class MainWindow : JFrame() {
         scope.launch {
             while (isActive) {
                 gd.detectGame()
-                if (gd.isRunning() && gameWasntRunningLastCheck) {
+                if (gd.isRunning() && gameWasNotRunningLastCheck) {
                     if (gd.gameStarted()) {
                         burndownCalculator = BurndownCalculator()
-                        gameWasntRunningLastCheck = false
+                        gameWasNotRunningLastCheck = false
+                    }
+                }
+                burndownCalculator?.let {
+                    if (it.gameOver) {
+                        gameWasNotRunningLastCheck = true
+                        it.close()
+                        burndownCalculator = null
                     }
                 }
                 overlay.isVisible = gd.isForeground()
