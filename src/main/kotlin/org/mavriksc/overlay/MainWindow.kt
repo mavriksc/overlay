@@ -12,6 +12,14 @@ class MainWindow : JFrame() {
     //  for setting the time limit for the spell burn down
     //  Dodge dir and map look timer color and rates
 
+    // TODO
+    // - settings for timers
+    // - option for full map flash or surrounding rect. if rect the thickness can be set
+    // - actual burndown calculations
+
+    // known issues
+    // after the game ends and into a new game it will not have reset things to start back up correctly
+
     private val overlay = GameOverlay()
     private val gd = GameDetector()
     private val job = Job()
