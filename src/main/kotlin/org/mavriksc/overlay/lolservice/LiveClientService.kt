@@ -36,14 +36,14 @@ class LiveClientService : Closeable {
         pollingJob.cancel()
     }
 
-    fun fetchActivePlayer(): String {
+    fun fetchActivePlayer() {
         val activePlayerRequest = activePlayerURL.toRequest()
         client.newCall(activePlayerRequest).execute().use { response ->
             val body = response.body.string()
             val bodyObject = Json.parseToJsonElement(body).jsonObject
             val stats = parseStats(bodyObject)
             _activePlayerData.value = stats
-            return body
+            println("Fetched active player data: $stats")
         }
     }
 

@@ -6,7 +6,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
 import javax.swing.BoxLayout
 import javax.swing.JButton
@@ -27,7 +26,7 @@ class MainWindow : JFrame() {
     private val gd = GameDetector()
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
-    private var gameJustStarted = true
+    private var gameWasntRunningLastCheck = true
     private var burndownCalculator: BurndownCalculator? = null
 
 
@@ -45,10 +44,10 @@ class MainWindow : JFrame() {
         scope.launch {
             while (isActive) {
                 gd.detectGame()
-                if (gd.isRunning() && gameJustStarted) {
+                if (gd.isRunning() && gameWasntRunningLastCheck) {
                     if (gd.gameStarted()) {
                         burndownCalculator = BurndownCalculator()
-                        gameJustStarted = false
+                        gameWasntRunningLastCheck = false
                     }
                 }
                 overlay.isVisible = gd.isForeground()

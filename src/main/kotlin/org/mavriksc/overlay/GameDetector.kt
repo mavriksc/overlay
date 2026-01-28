@@ -22,11 +22,8 @@ class GameDetector {
     fun detectGame() {
         try {
             isGameRunning()
-            // println("GameDetector: Game running status: ${isRunning()}")
             if (isRunning()) {
                 getForegroundPid()
-                //checkGameStarted()
-                //    println("GameDetector: Is Game Foreground: ${isForeground()}")
             }
         } catch (t: Throwable) {
             System.err.println("GameDetector failed to enumerate processes: ${t.message}")
