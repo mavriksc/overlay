@@ -53,8 +53,13 @@ class GameDetector {
             return
         }
         if (gameStarted) return
-        client.newCall(gameUrl.toRequest()).execute().use {
-            gameStarted = it.isSuccessful
+        try {
+            client.newCall(gameUrl.toRequest()).execute().use {
+                gameStarted = it.isSuccessful
+            }
+
+        } catch (t: Throwable) {
+            println("GameDetector failed to check if game started: ${t.message}")
         }
     }
 

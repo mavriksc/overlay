@@ -16,7 +16,7 @@ class BurndownCalculator : Closeable {
     private val champDataService: ChampDataService = ChampDataService()
     private val liveClientService: LiveClientService = LiveClientService()
     private val activePlayerData: Flow<ActivePlayerData?> = liveClientService.activePlayerData
-    private var latestActivePlayer: ActivePlayerData? = null
+    private var latestActivePlayerData: ActivePlayerData? = null
     private var champion: Champion? = null
     var gameOver = false
         private set
@@ -44,15 +44,29 @@ class BurndownCalculator : Closeable {
                 .onCompletion { stop() }
                 .collect { data ->
                     if (data == null) return@collect
-                    latestActivePlayer = data
-                    if (champion == null) champion = champDataService.getChampion(latestActivePlayer!!.championName)
                     println("Received active player data: $data")
+                    latestActivePlayerData = data
+                    champion?.let { _ -> everyUpdate() } ?: gameStartStuff()
+
                 }
         }
     }
 
+    private fun gameStartStuff() {
+        champion = champDataService.getChampion(latestActivePlayerData!!.championName)
+        // get initial values
+        everyUpdate()
+    }
+
+    private fun everyUpdate() {
+        latestActivePlayerData?.let { data ->
+
+        }
+
+    }
+
     private fun stop() {
-        latestActivePlayer = null
+        latestActivePlayerData = null
         gameOver = true
         liveClientService.close()
         println("Burndown calculator stopped")
