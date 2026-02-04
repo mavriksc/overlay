@@ -16,14 +16,16 @@ class MainWindow : JFrame() {
     // - settings for timers
     // - option for full map flash or surrounding rect. if rect the thickness can be set
     // - actual burndown calculations
+    //    - only enable for mana champions
 
     // known issues
     // after the game ends and into a new game it will not have reset things to start back up correctly
+    // ---Look into restarting the jobs
 
     private val overlay = GameOverlay()
-    private val gd = GameDetector()
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
+    private var gd = GameDetector()
     private var gameWasNotRunningLastCheck = true
     private var burndownCalculator: BurndownCalculator? = null
 
@@ -51,8 +53,7 @@ class MainWindow : JFrame() {
                 burndownCalculator?.let {
                     if (it.gameOver) {
                         gameWasNotRunningLastCheck = true
-                        it.close()
-                        burndownCalculator = null
+                        gd = GameDetector()
                     }
                 }
                 overlay.isVisible = gd.isForeground()

@@ -12,6 +12,11 @@ import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.Color
 import java.io.Closeable
 
+//how many casts of a spell before you can't cast a full rotation
+//red <= 1
+//yellow <= 2
+//green > 2
+
 class BurndownCalculator : Closeable {
     private val champDataService: ChampDataService = ChampDataService()
     private val liveClientService: LiveClientService = LiveClientService()

@@ -18,11 +18,11 @@ class LiveClientService : Closeable {
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
     private val _activePlayerData = MutableStateFlow<ActivePlayerData?>(null)
-    private val pollingJob = Job()
+    private var pollingJob: Job? = null
     val activePlayerData: StateFlow<ActivePlayerData?> = _activePlayerData.asStateFlow()
 
     init {
-        CoroutineScope(Dispatchers.Default + pollingJob).launch {
+        pollingJob = CoroutineScope(Dispatchers.Default).launch {
             while (isActive) {
                 fetchActivePlayer()
                 delay(1_000)
@@ -31,7 +31,7 @@ class LiveClientService : Closeable {
     }
 
     override fun close() {
-        pollingJob.cancel()
+        pollingJob?.cancel()
     }
 
     fun fetchActivePlayer() {
@@ -44,7 +44,7 @@ class LiveClientService : Closeable {
             }
         } catch (e: Exception) {
             println("Failed to fetch active player data: ${e.message}")
-            pollingJob.cancel()
+            this.close()
         }
     }
 
