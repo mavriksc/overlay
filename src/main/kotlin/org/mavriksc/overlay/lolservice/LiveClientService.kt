@@ -44,7 +44,7 @@ class LiveClientService : Closeable {
             }
         } catch (e: Exception) {
             println("Failed to fetch active player data: ${e.message}")
-            this.close()
+            _activePlayerData.value = null
         }
     }
 

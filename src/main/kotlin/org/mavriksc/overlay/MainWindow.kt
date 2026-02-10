@@ -46,7 +46,7 @@ class MainWindow : JFrame() {
                 gd.detectGame()
                 if (gd.isRunning() && gameWasNotRunningLastCheck) {
                     if (gd.gameStarted()) {
-                        burndownCalculator = BurndownCalculator()
+                        burndownCalculator = BurndownCalculator(overlay)
                         gameWasNotRunningLastCheck = false
                     }
                 }

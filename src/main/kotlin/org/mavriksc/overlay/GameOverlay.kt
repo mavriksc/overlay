@@ -26,7 +26,8 @@ data class OverlayConfig(
 )
 
 class GameOverlay : JFrame() {
-    private val fullScreenBounds = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
+    private val fullScreenBounds =
+        GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
     var config = OverlayConfig(
         mapRect = Rectangle(fullScreenBounds.width - 370, fullScreenBounds.height - 370, 350, 350),
         northColor = Color.GREEN,
@@ -37,12 +38,16 @@ class GameOverlay : JFrame() {
         dodgeTimer = 1_000,
         mapTimer = 5_000
     )
+    var spellStates: List<Pair<Color, Boolean>>? = null
     private var dodgeDir = Random.nextBoolean()
     private var flashMap = false
     private val p1 = Pair(20, 20)
     private val p2 = Pair(fullScreenBounds.width - 20, 20)
     private val p3 = Pair(fullScreenBounds.width - 20, fullScreenBounds.height - 20)
     private val p4 = Pair(20, fullScreenBounds.height - 20)
+    private val topLefts = listOf(Pair(1079, 1325), Pair(1137, 1325), Pair(1196, 1325), Pair(1255, 1325))
+    private val hxw = Pair(20, 10)
+
 
     init {
         isUndecorated = true
@@ -70,7 +75,6 @@ class GameOverlay : JFrame() {
 
     fun updateWindowBounds(b: Rectangle) {
         bounds = b
-
     }
 
     override fun paint(g: Graphics) {
@@ -95,27 +99,28 @@ class GameOverlay : JFrame() {
         if (dodgeDir) {
             //draw top
             g2d.color = config.northColor
-            g2d.drawLine(p1.first, p1.second, p2.first, p2.second)
+            g2d.drawLine(p1.x(), p1.y(), p2.x(), p2.y())
 
             //draw left
             g2d.color = config.westColor
-            g2d.drawLine(p1.first, p1.second, p4.first, p4.second)
+            g2d.drawLine(p1.x(), p1.y(), p4.x(), p4.y())
         } else {
             //draw bottom
             g2d.color = config.southColor
-            g2d.drawLine(p4.first, p4.second, p3.first, p3.second)
+            g2d.drawLine(p4.x(), p4.y(), p3.x(), p3.y())
 
             //draw right
             g2d.color = config.eastColor
-            g2d.drawLine(p2.first, p2.second, p3.first, p3.second)
+            g2d.drawLine(p2.x(), p2.y(), p3.x(), p3.y())
         }
     }
 
     private fun drawSpellPacing(g2d: Graphics2D) {
-        //blue, can use all spells off cooldown until goal
-        //green, can use at least 1 rotation of all spells without getting below burn rate
-        //yellow, can use spell without getting below burn rate
-        // orange, can use spell but is below burn rate, should pace down
-        // red cant cast all spells
+        spellStates?.forEachIndexed { i, state ->
+            if (state.second) {
+                g2d.color = state.first
+                g2d.fillRect(topLefts[i].x(), topLefts[i].y(), hxw.x(), hxw.y())
+            }
+        }
     }
 }

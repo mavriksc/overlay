@@ -79,3 +79,7 @@ fun getOkHttpClientForGameClient(timeout: Long = 1, unit: TimeUnit = TimeUnit.SE
         .sslSocketFactory(sslContext.socketFactory, compositeTrustManager)
         .build()
 }
+
+fun <A, B> Pair<A,B>.x() = first
+fun <A, B> Pair<A,B>.y() = second
+

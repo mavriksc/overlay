@@ -2,8 +2,8 @@ package org.mavriksc.overlay
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import org.mavriksc.overlay.lolservice.ActivePlayerData
 import org.mavriksc.overlay.lolservice.ChampDataService
@@ -17,11 +17,12 @@ import java.io.Closeable
 //yellow <= 2
 //green > 2
 
-class BurndownCalculator : Closeable {
+class BurndownCalculator(overlay: GameOverlay) : Closeable {
     private val champDataService: ChampDataService = ChampDataService()
     private val liveClientService: LiveClientService = LiveClientService()
     private val activePlayerData: Flow<ActivePlayerData?> = liveClientService.activePlayerData
-    private var latestActivePlayerData: ActivePlayerData? = null
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.Default + job)
     private var champion: Champion? = null
     private var lastChampionLevel = 0
     private var spellCosts = listOf(0.0f, 0.0f, 0.0f, 0.0f)
@@ -29,41 +30,36 @@ class BurndownCalculator : Closeable {
     var gameOver = false
         private set
 
-    fun getSpellState() = spellState.toList()
-
-
     init {
-        CoroutineScope(Dispatchers.Default).launch {
+        scope.launch {
             activePlayerData
-                .onCompletion { stop() }
                 .collect { data ->
-                    if (data == null) return@collect
+                    if (data == null) {
+                        stop()
+                        return@collect
+                    }
                     println("Received active player data: $data")
-                    latestActivePlayerData = data
-                    champion?.let { _ -> everyUpdate() } ?: gameStartStuff()
-
+                    champion?.let { _ -> everyUpdate(data) } ?: gameStartStuff(data)
+                    overlay.spellStates = spellState.toList()
                 }
         }
     }
 
-    private fun gameStartStuff() {
-        champion = champDataService.getChampion(latestActivePlayerData!!.championName)
+    private fun gameStartStuff(data: ActivePlayerData) {
+        champion = champDataService.getChampion(data.championName)
         // get initial values
         println("game start stuff: ${champion?.name}")
-        everyUpdate()
+        everyUpdate(data)
     }
 
-    private fun everyUpdate() {
-        latestActivePlayerData?.let { data ->
-            println("every update: $data")
-            val level = data.spellLevels.map { it.value }.sum()
-            if (level != lastChampionLevel) {
-
-                spellCosts = calculateSpellCosts(data)
-                lastChampionLevel = level
-            }
-            setSpellStatus(data)
+    private fun everyUpdate(data: ActivePlayerData) {
+        println("every update: $data")
+        val level = data.spellLevels.map { it.value }.sum()
+        if (level != lastChampionLevel) {
+            spellCosts = calculateSpellCosts(data)
+            lastChampionLevel = level
         }
+        setSpellStatus(data)
     }
 
     private fun setSpellStatus(data: ActivePlayerData) {
@@ -86,9 +82,9 @@ class BurndownCalculator : Closeable {
         }
 
     private fun stop() {
-        latestActivePlayerData = null
         gameOver = true
         liveClientService.close()
+        job.cancel()
         println("Burndown calculator stopped")
     }
 
