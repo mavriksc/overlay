@@ -66,14 +66,14 @@ class BurndownCalculator(overlay: GameOverlay) : Closeable {
         val availAfterFullRotation = data.currentResources - spellCosts.sum()
         if (availAfterFullRotation >= 0) {
             spellCosts.forEachIndexed { i, cost ->
-                val casts = availAfterFullRotation / cost
+                val casts = if (cost > 0) availAfterFullRotation / cost else 9.0f
                 when {
                     casts >= 2 -> spellState[i] = Pair(Color.GREEN, true)
                     casts >= 1 -> spellState[i] = Pair(Color.YELLOW, true)
                     else -> spellState[i] = Pair(Color.RED, true)
                 }
             }
-        }
+        } else spellState = List(4) { Pair(Color.RED, false) }.toMutableList()
     }
 
     private fun calculateSpellCosts(data: ActivePlayerData) =

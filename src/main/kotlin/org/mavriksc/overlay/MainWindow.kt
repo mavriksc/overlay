@@ -57,7 +57,7 @@ class MainWindow : JFrame() {
                     }
                 }
                 overlay.isVisible = gd.isForeground()
-                delay(1_000)
+                delay(500)
             }
         }
     }
