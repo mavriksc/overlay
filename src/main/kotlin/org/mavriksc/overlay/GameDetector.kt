@@ -116,7 +116,7 @@ class GameDetector {
 }
 
 // Helper to detect INVALID_HANDLE_VALUE since JNA doesn't expose a direct Kotlin-friendly check
-private object WinBase {
+object WinBase {
     fun INVALID_HANDLE_VALUE(handle: WinNT.HANDLE?): Boolean {
         if (handle == null) return true
         val pointer: Pointer = handle.pointer ?: return true
