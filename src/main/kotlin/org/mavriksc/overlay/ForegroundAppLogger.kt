@@ -1,25 +1,25 @@
 package org.mavriksc.overlay
 
-import com.sun.jna.Pointer
-import com.sun.jna.platform.win32.*
+import com.sun.jna.platform.win32.Kernel32
+import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinDef.HWND
+import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.platform.win32.WinUser.WinEventProc
 import com.sun.jna.ptr.IntByReference
 
-object ForegroundAppLogger {
-    private const val EVENT_SYSTEM_FOREGROUND = 0x0003
-    private const val WIN_EVENT_OUT_OF_CONTEXT = 0x0000
-    private const val SKIP_OWN_PROCESS = 0x0002
-    private const val EVENT_OBJECT_CREATE = 0x8000
-    private const val EVENT_OBJECT_DESTROY = 0x8001
+class ForegroundAppLogger {
+    private val EVENT_SYSTEM_FOREGROUND = 0x0003
+    private val WIN_EVENT_OUT_OF_CONTEXT = 0x0000
+    private val SKIP_OWN_PROCESS = 0x0002
+    private val EVENT_OBJECT_CREATE = 0x8000
+    private val EVENT_OBJECT_DESTROY = 0x8001
 
-    private const val game = "League of Legends.exe"
+    private val GAME_EXECUTABLE_NAME = "League of Legends.exe"
 
-    @JvmStatic
-    fun main(args: Array<String>) {
+    init {
         val foregroundEventProc = WinEventProc { _, _, hwnd, _, _, _, _ ->
-            println("League is foreground:${exeNameFromHwnd(hwnd) == game}")
+            println("League is foreground:${exeNameFromHwnd(hwnd) == GAME_EXECUTABLE_NAME}")
         }
 
         val hook = User32.INSTANCE.SetWinEventHook(
@@ -32,8 +32,6 @@ object ForegroundAppLogger {
             WIN_EVENT_OUT_OF_CONTEXT or SKIP_OWN_PROCESS
         )
 
-
-        // Example structure (Conceptual JNA)
         val proc =
             WinEventProc { _, event, hwnd, _, _, _, _ ->
                 processExeStartStopEvent(event, hwnd)
@@ -46,25 +44,12 @@ object ForegroundAppLogger {
             0, 0,
             WIN_EVENT_OUT_OF_CONTEXT
         )
-
-
-        if (hook == null || Pointer.nativeValue(hook.pointer) == 0L) {
-            System.err.println("Failed to set foreground window hook.")
-            return
-        }
-
         Runtime.getRuntime().addShutdownHook(Thread {
             User32.INSTANCE.UnhookWinEvent(hook)
             User32.INSTANCE.UnhookWinEvent(hHook)
         })
-
         println("Foreground app logger running. Press Ctrl+C to exit.")
 
-        val msg = WinUser.MSG()
-        while (User32.INSTANCE.GetMessage(msg, null, 0, 0) != 0) {
-            User32.INSTANCE.TranslateMessage(msg)
-            User32.INSTANCE.DispatchMessage(msg)
-        }
     }
 
     private fun exeNameFromHwnd(hwnd: HWND?): String {
@@ -84,7 +69,7 @@ object ForegroundAppLogger {
     }
 
     private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
-        if (exeNameFromHwnd(hwnd) != game) return
+        if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
         if (DWORD(EVENT_OBJECT_CREATE.toLong()).compareTo(event) == 0) {
             println("League is starting: ${exeNameFromHwnd(hwnd)}")
         } else if (DWORD(EVENT_OBJECT_DESTROY.toLong()).compareTo(event) == 0) {
@@ -114,4 +99,8 @@ object ForegroundAppLogger {
             Kernel32.INSTANCE.CloseHandle(process)
         }
     }
+}
+
+fun main() {
+    val fal = ForegroundAppLogger()
 }
