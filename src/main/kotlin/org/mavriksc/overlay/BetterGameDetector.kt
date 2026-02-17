@@ -7,21 +7,22 @@ import com.sun.jna.platform.win32.WinDef.HWND
 import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.platform.win32.WinUser.WinEventProc
 import com.sun.jna.ptr.IntByReference
+import java.util.concurrent.CountDownLatch
 
-class ForegroundAppLogger {
+class BetterGameDetector {
     private val EVENT_SYSTEM_FOREGROUND = 0x0003
     private val WIN_EVENT_OUT_OF_CONTEXT = 0x0000
     private val SKIP_OWN_PROCESS = 0x0002
     private val EVENT_OBJECT_CREATE = 0x8000
     private val EVENT_OBJECT_DESTROY = 0x8001
-
     private val GAME_EXECUTABLE_NAME = "League of Legends.exe"
 
+
     init {
+
         val foregroundEventProc = WinEventProc { _, _, hwnd, _, _, _, _ ->
             println("League is foreground:${exeNameFromHwnd(hwnd) == GAME_EXECUTABLE_NAME}")
         }
-
         val hook = User32.INSTANCE.SetWinEventHook(
             EVENT_SYSTEM_FOREGROUND,
             EVENT_SYSTEM_FOREGROUND,
@@ -48,7 +49,6 @@ class ForegroundAppLogger {
             User32.INSTANCE.UnhookWinEvent(hook)
             User32.INSTANCE.UnhookWinEvent(hHook)
         })
-        println("Foreground app logger running. Press Ctrl+C to exit.")
 
     }
 
@@ -102,5 +102,30 @@ class ForegroundAppLogger {
 }
 
 fun main() {
-    val fal = ForegroundAppLogger()
+    val shutdownLatch = CountDownLatch(1)
+
+    val loggerThread = Thread {
+        BetterGameDetector()
+        try {
+            shutdownLatch.await()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+    }
+    loggerThread.name = "foreground-app-logger"
+    loggerThread.isDaemon = true
+    loggerThread.start()
+
+    Runtime.getRuntime().addShutdownHook(Thread {
+        shutdownLatch.countDown()
+    })
+
+    println("Foreground app logger running in background. Type 'q' and press Enter to exit.")
+    while (true) {
+        val line = readLine() ?: break
+        if (line.trim().equals("q", ignoreCase = true)) {
+            break
+        }
+    }
+    shutdownLatch.countDown()
 }
