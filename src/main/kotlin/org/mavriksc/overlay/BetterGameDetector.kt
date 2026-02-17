@@ -8,7 +8,7 @@ import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.platform.win32.WinUser.WinEventProc
 import com.sun.jna.ptr.IntByReference
 import java.util.concurrent.CountDownLatch
-
+//TODO publish to flow and get to properly run in the background
 class BetterGameDetector {
     private val EVENT_SYSTEM_FOREGROUND = 0x0003
     private val WIN_EVENT_OUT_OF_CONTEXT = 0x0000
