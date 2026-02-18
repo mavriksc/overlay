@@ -5,10 +5,14 @@ import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinDef.HWND
 import com.sun.jna.platform.win32.WinNT
+import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.platform.win32.WinUser.WinEventProc
 import com.sun.jna.ptr.IntByReference
-import java.util.concurrent.CountDownLatch
-//TODO publish to flow and get to properly run in the background
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 class BetterGameDetector {
     private val EVENT_SYSTEM_FOREGROUND = 0x0003
     private val WIN_EVENT_OUT_OF_CONTEXT = 0x0000
@@ -17,11 +21,16 @@ class BetterGameDetector {
     private val EVENT_OBJECT_DESTROY = 0x8001
     private val GAME_EXECUTABLE_NAME = "League of Legends.exe"
 
+    private val _isGameForeground = MutableStateFlow(false)
+    val isGameForeground: StateFlow<Boolean> = _isGameForeground.asStateFlow()
 
-    init {
+    private val _isGameRunning = MutableStateFlow(false)
+    val isGameRunning: StateFlow<Boolean> = _isGameRunning.asStateFlow()
+
+    fun detectGame() {
 
         val foregroundEventProc = WinEventProc { _, _, hwnd, _, _, _, _ ->
-            println("League is foreground:${exeNameFromHwnd(hwnd) == GAME_EXECUTABLE_NAME}")
+            _isGameForeground.value = exeNameFromHwnd(hwnd) == GAME_EXECUTABLE_NAME
         }
         val hook = User32.INSTANCE.SetWinEventHook(
             EVENT_SYSTEM_FOREGROUND,
@@ -33,7 +42,7 @@ class BetterGameDetector {
             WIN_EVENT_OUT_OF_CONTEXT or SKIP_OWN_PROCESS
         )
 
-        val proc =
+        val allExeStartStopEventProc =
             WinEventProc { _, event, hwnd, _, _, _, _ ->
                 processExeStartStopEvent(event, hwnd)
             }
@@ -41,7 +50,7 @@ class BetterGameDetector {
             EVENT_OBJECT_CREATE,
             EVENT_OBJECT_DESTROY,
             null,
-            proc,
+            allExeStartStopEventProc,
             0, 0,
             WIN_EVENT_OUT_OF_CONTEXT
         )
@@ -49,6 +58,12 @@ class BetterGameDetector {
             User32.INSTANCE.UnhookWinEvent(hook)
             User32.INSTANCE.UnhookWinEvent(hHook)
         })
+
+        val msg = WinUser.MSG()
+        while (User32.INSTANCE.GetMessage(msg, null, 0, 0) != 0) {
+            User32.INSTANCE.TranslateMessage(msg)
+            User32.INSTANCE.DispatchMessage(msg)
+        }
 
     }
 
@@ -71,9 +86,9 @@ class BetterGameDetector {
     private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
         if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
         if (DWORD(EVENT_OBJECT_CREATE.toLong()).compareTo(event) == 0) {
-            println("League is starting: ${exeNameFromHwnd(hwnd)}")
+            _isGameRunning.value = true
         } else if (DWORD(EVENT_OBJECT_DESTROY.toLong()).compareTo(event) == 0) {
-            println("League is stopping: ${exeNameFromHwnd(hwnd)}")
+            _isGameRunning.value = false
         }
     }
 
@@ -101,31 +116,46 @@ class BetterGameDetector {
     }
 }
 
-fun main() {
-    val shutdownLatch = CountDownLatch(1)
+fun main() = runBlocking {
+    val shutdownSignal = CompletableDeferred<Unit>()
 
-    val loggerThread = Thread {
-        BetterGameDetector()
-        try {
-            shutdownLatch.await()
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
+    val bgd = BetterGameDetector()
+    val gdJob = launch(Dispatchers.IO) {
+        bgd.detectGame()
+    }
+
+    val foregroundJob = launch(Dispatchers.IO) {
+        bgd.isGameForeground
+            .collect { isForeground ->
+                println("League is foreground: $isForeground")
+            }
+    }
+
+    val runningJob = launch(Dispatchers.IO) {
+        bgd.isGameRunning
+            .collect { isRunning ->
+                println("League is running: $isRunning")
+            }
+    }
+
+    val inputJob = launch(Dispatchers.IO) {
+        println("Foreground app logger running in background. Type 'q' and press Enter to exit.")
+        while (true) {
+            val line = readLine() ?: break
+            if (line.trim().equals("q", ignoreCase = true)) {
+                shutdownSignal.complete(Unit)
+                break
+            }
         }
     }
-    loggerThread.name = "foreground-app-logger"
-    loggerThread.isDaemon = true
-    loggerThread.start()
 
     Runtime.getRuntime().addShutdownHook(Thread {
-        shutdownLatch.countDown()
+        shutdownSignal.complete(Unit)
     })
 
-    println("Foreground app logger running in background. Type 'q' and press Enter to exit.")
-    while (true) {
-        val line = readLine() ?: break
-        if (line.trim().equals("q", ignoreCase = true)) {
-            break
-        }
-    }
-    shutdownLatch.countDown()
+    shutdownSignal.await()
+    gdJob.cancelAndJoin()
+    foregroundJob.cancelAndJoin()
+    runningJob.cancelAndJoin()
+    inputJob.cancelAndJoin()
 }
