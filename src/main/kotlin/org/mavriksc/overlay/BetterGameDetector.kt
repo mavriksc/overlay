@@ -42,8 +42,7 @@ class BetterGameDetector {
             WIN_EVENT_OUT_OF_CONTEXT or SKIP_OWN_PROCESS
         )
 
-        val allExeStartStopEventProc =
-            WinEventProc { _, event, hwnd, _, _, _, _ ->
+        val allExeStartStopEventProc = WinEventProc { _, event, hwnd, _, _, _, _ ->
                 processExeStartStopEvent(event, hwnd)
             }
         val hHook = User32.INSTANCE.SetWinEventHook(
@@ -64,7 +63,15 @@ class BetterGameDetector {
             User32.INSTANCE.TranslateMessage(msg)
             User32.INSTANCE.DispatchMessage(msg)
         }
+    }
 
+    private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
+        if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
+        if (DWORD(EVENT_OBJECT_CREATE.toLong()).compareTo(event) == 0) {
+            _isGameRunning.value = true
+        } else if (DWORD(EVENT_OBJECT_DESTROY.toLong()).compareTo(event) == 0) {
+            _isGameRunning.value = false
+        }
     }
 
     private fun exeNameFromHwnd(hwnd: HWND?): String {
@@ -81,15 +88,6 @@ class BetterGameDetector {
 
         val path = pidToExeFileName(pid)
         return path?.substringAfterLast('\\') ?: "<unknown>"
-    }
-
-    private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
-        if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
-        if (DWORD(EVENT_OBJECT_CREATE.toLong()).compareTo(event) == 0) {
-            _isGameRunning.value = true
-        } else if (DWORD(EVENT_OBJECT_DESTROY.toLong()).compareTo(event) == 0) {
-            _isGameRunning.value = false
-        }
     }
 
     private fun pidToExeFileName(pid: Int): String? {
@@ -138,16 +136,14 @@ fun main() = runBlocking {
             }
     }
 
-    val inputJob = launch(Dispatchers.IO) {
         println("Foreground app logger running in background. Type 'q' and press Enter to exit.")
         while (true) {
-            val line = readLine() ?: break
+            val line = readlnOrNull() ?: break
             if (line.trim().equals("q", ignoreCase = true)) {
                 shutdownSignal.complete(Unit)
                 break
             }
         }
-    }
 
     Runtime.getRuntime().addShutdownHook(Thread {
         shutdownSignal.complete(Unit)
@@ -157,5 +153,4 @@ fun main() = runBlocking {
     gdJob.cancelAndJoin()
     foregroundJob.cancelAndJoin()
     runningJob.cancelAndJoin()
-    inputJob.cancelAndJoin()
 }
