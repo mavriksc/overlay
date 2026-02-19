@@ -10,16 +10,15 @@ import javax.swing.*
 
 class MainWindow : JFrame() {
     // CONTROLS:
-    //  to start/stop polling for champion data
-    //  to show the status of the game
-    //  for activation of the 3 tools
-    //  for setting the time limit for the spell burn down
-    //  Dodge dir and map look timer color and rates
+    //  for activation of the 3 tools - DONE
+    //  actual burndown calculations - DONE
+    //  Dodge dir and map look color - DONE
+    //  and rates
+    //  Label to show the status of the game
 
     // TODO
     // - settings for timers
     // - option for full map flash or surrounding rect. if rect the thickness can be set
-    // - actual burndown calculations
     //    - only enable for mana champions
 
     // known issues
