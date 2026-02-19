@@ -1,7 +1,6 @@
 package org.mavriksc.overlay.lolservice
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class Ability(val name: String, val cooldowns: List<Float>, val cost: List<Float>?, val costBurn: List<Float>?)
@@ -25,9 +24,8 @@ data class ActivePlayerData(
     val spellLevels: Map<String, Int>
 )
 
-data class LiveClientEvent(
+data class LiveGameEvent(
     val eventId: Int,
     val eventName: String,
-    val eventTime: Float?,
-    val data: JsonObject
+    val eventTime: Float?
 )

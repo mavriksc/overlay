@@ -1,12 +1,8 @@
 package org.mavriksc.overlay.lolservice
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.*
 import org.mavriksc.overlay.getOkHttpClientForGameClient
@@ -21,23 +17,15 @@ class LiveClientService : Closeable {
 
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
-    private val eventDataURL = "https://localhost:2999/liveclientdata/eventdata"
     private val abilityKeys = listOf("Q", "W", "E", "R")
     private val _activePlayerData = MutableStateFlow<ActivePlayerData?>(null)
-    private val _events = MutableSharedFlow<LiveClientEvent>(
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
     private var pollingJob: Job? = null
-    private var lastEventId = -1
     val activePlayerData: StateFlow<ActivePlayerData?> = _activePlayerData.asStateFlow()
-    val events: SharedFlow<LiveClientEvent> = _events.asSharedFlow()
 
     init {
         pollingJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
                 fetchActivePlayer()
-                fetchEvents()
                 delay(1_000)
             }
         }
@@ -57,30 +45,6 @@ class LiveClientService : Closeable {
             }
         } catch (e: Exception) {
             println("Failed to fetch active player data: ${e.message}")
-        }
-    }
-
-    private fun fetchEvents() {
-        try {
-            client.newCall(eventDataURL.toRequest()).execute().use { response ->
-                val body = response.body.string()
-                val bodyObject = Json.parseToJsonElement(body).jsonObject
-                val eventsArray = bodyObject["Events"]?.jsonArray ?: return
-                val newEvents = eventsArray.mapNotNull { eventElement ->
-                    val eventObject = eventElement.jsonObject
-                    val eventId = eventObject["EventID"]?.jsonPrimitive?.int ?: return@mapNotNull null
-                    if (eventId <= lastEventId) return@mapNotNull null
-                    val eventName = eventObject["EventName"]?.jsonPrimitive?.content ?: "Unknown"
-                    val eventTime = eventObject["EventTime"]?.jsonPrimitive?.floatOrNull
-                    LiveClientEvent(eventId, eventName, eventTime, eventObject)
-                }.sortedBy { it.eventId }
-                if (newEvents.isNotEmpty()) {
-                    lastEventId = newEvents.maxOf { it.eventId }
-                    newEvents.forEach { _events.tryEmit(it) }
-                }
-            }
-        } catch (e: Exception) {
-            println("Failed to fetch live client events: ${e.message}")
         }
     }
 
