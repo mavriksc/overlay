@@ -23,11 +23,12 @@ class MainWindow : JFrame() {
     // ---Look into restarting the jobs
 
     private val overlay = GameOverlay()
-    private val job = Job()
-    private val scope = CoroutineScope(Dispatchers.Default + job)
-    private var gd = GameDetector()
-    private var gameWasNotRunningLastCheck = true
     private var burndownCalculator: BurndownCalculator? = null
+    private val gameDetector = GameDetector()
+    private val gameIsForeground = gameDetector.isGameForeground
+    private val gameIsRunning = gameDetector.isGameRunning
+    private var falseStartTimer: Timer? = null
+    private var haveWeWaitedPatiently = false
 
 
     init {
@@ -37,29 +38,42 @@ class MainWindow : JFrame() {
         defaultCloseOperation = EXIT_ON_CLOSE
         contentPane = buildControlsPanel()
         overlay.updateWindowBounds(
-            GraphicsEnvironment.getLocalGraphicsEnvironment()
-                .defaultScreenDevice.defaultConfiguration.bounds
+            GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
         )
         overlay.isVisible = false
+
+
+        val scope = CoroutineScope(Dispatchers.IO)
+        scope.launch { gameDetector.detectGame() }
         scope.launch {
-            while (isActive) {
-                gd.detectGame()
-                if (gd.isRunning() && gameWasNotRunningLastCheck) {
-                    if (gd.gameStarted()) {
-                        burndownCalculator = BurndownCalculator(overlay)
-                        gameWasNotRunningLastCheck = false
-                    }
-                }
-                burndownCalculator?.let {
-                    if (it.gameOver) {
-                        gameWasNotRunningLastCheck = true
-                        gd = GameDetector()
-                    }
-                }
-                overlay.isVisible = gd.isForeground()
-                delay(500)
+            gameIsForeground.collect { isForeground ->
+                println("Game is foreground: $isForeground")
             }
         }
+
+        scope.launch {
+            gameIsRunning.collect { isRunning ->
+                println("Game is running: $isRunning")
+//                if (isRunning) {
+//                    falseStartTimer?.let {
+//                        if (it.isRunning) {
+//
+//                        }
+//                    } ?: run {
+//                        falseStartTimer = Timer(1000) {
+//                            haveWeWaitedPatiently = true
+//                            falseStartTimer = null
+//                        }
+//                    }
+//
+//                } else {
+//
+//                }
+
+            }
+        }
+
+
     }
 
     private fun buildControlsPanel(): JPanel {
@@ -87,9 +101,7 @@ class MainWindow : JFrame() {
         val mapFlashColorButton = JButton("Map flash color...")
         mapFlashColorButton.addActionListener {
             val chosen = JColorChooser.showDialog(
-                this,
-                "Map Flash Color",
-                overlay.config.mapFlashColor
+                this, "Map Flash Color", overlay.config.mapFlashColor
             )
             if (chosen != null) {
                 overlay.config.mapFlashColor = chosen
@@ -100,9 +112,7 @@ class MainWindow : JFrame() {
         val dodgeColorsButton = JButton("Dodge direction color...")
         dodgeColorsButton.addActionListener {
             val chosen = JColorChooser.showDialog(
-                this,
-                "Dodge Direction Color",
-                overlay.config.northColor
+                this, "Dodge Direction Color", overlay.config.northColor
             )
             if (chosen != null) {
                 overlay.config.northColor = chosen
@@ -120,11 +130,4 @@ class MainWindow : JFrame() {
         panel.add(dodgeColorsButton)
         return panel
     }
-
-    override fun dispose() {
-        job.cancel()
-        super.dispose()
-    }
-
-
 }
