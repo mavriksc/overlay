@@ -59,7 +59,6 @@ class MainWindow : JFrame() {
                 }
                 if (state == GameStatus.NOT_RUNNING) {
                     currentGameService?.close()
-                    burndownCalculator?.close()
                 }
             }
         }
