@@ -28,7 +28,7 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
             activePlayerData
                 .collect { data ->
                     data?.let {
-                        println("Received active player data: $it")
+                        //println("Received active player data: $it")
                         champion?.let { _ -> everyUpdate(it) } ?: gameStartStuff(it)
                         overlay.spellStates = spellState.toList()
                     }
@@ -69,6 +69,7 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
 
     private fun calculateSpellCosts(data: ActivePlayerData) =
         data.spellLevels.map { (spell, level) ->
+            println("spell: $spell, level: $level")
             champion!!.abilities.first { it.name == spell }.cost!![level]
         }
 

@@ -1,6 +1,9 @@
 package org.mavriksc.overlay
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
 import javax.swing.*
@@ -47,19 +50,40 @@ class MainWindow : JFrame() {
                 println("Game is foreground: $isForeground")
                 // need some signal that we are actually in game. i thought i had it figured out but the false start isnt
                 // just the loading screen.  but the state moving forward works correctly
-                overlay.isVisible = isForeground
+                overlay.isVisible = isForeground && gameState.value == GameStatus.IN_PROGRESS
             }
         }
         scope.launch {
             gameState.collect { state ->
                 println("Game state: $state")
-                if (state == GameStatus.IN_PROGRESS) {
-                    currentGameService = LiveClientService()
-                    burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
-                    scope.launch { currentGameService!!.events.collect { println(it) } }
-                }
-                if (state == GameStatus.NOT_RUNNING) {
-                    currentGameService?.close()
+                when (state) {
+                    GameStatus.LOADING -> {
+                        scope.launch {
+                            delay(5000)
+                            println("Starting events flow")
+                            gameDetector.startEventsFlow()
+                        }
+                    }
+
+                    GameStatus.IN_PROGRESS -> {
+                        overlay.isVisible = gameIsForeground.value
+                        currentGameService = LiveClientService()
+                        burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
+                    }
+
+                    GameStatus.GAME_OVER -> {
+                        currentGameService?.close()
+                        currentGameService = null
+                        overlay.isVisible = false
+                    }
+
+                    GameStatus.NOT_RUNNING -> {
+                        currentGameService?.close()
+                        currentGameService = null
+                        overlay.isVisible = false
+                    }
+
+                    else -> {}
                 }
             }
         }
