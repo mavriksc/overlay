@@ -14,7 +14,7 @@ import java.awt.Color
 //yellow <= 2
 //green > 2
 
-class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlayerData?>)  {
+class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlayerData?>) {
     //TODO fix spell indicators are all there instead of just on leveled up spells only.
     private val champDataService: ChampDataService = ChampDataService()
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -27,12 +27,11 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
         scope.launch {
             activePlayerData
                 .collect { data ->
-                    if (data == null) {
-                        return@collect
+                    data?.let {
+                        println("Received active player data: $it")
+                        champion?.let { _ -> everyUpdate(it) } ?: gameStartStuff(it)
+                        overlay.spellStates = spellState.toList()
                     }
-                    println("Received active player data: $data")
-                    champion?.let { _ -> everyUpdate(data) } ?: gameStartStuff(data)
-                    overlay.spellStates = spellState.toList()
                 }
         }
     }
