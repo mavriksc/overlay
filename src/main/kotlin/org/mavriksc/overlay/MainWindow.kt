@@ -48,8 +48,6 @@ class MainWindow : JFrame() {
         scope.launch {
             gameIsForeground.collect { isForeground ->
                 println("Game is foreground: $isForeground")
-                // need some signal that we are actually in game. i thought i had it figured out but the false start isnt
-                // just the loading screen.  but the state moving forward works correctly
                 overlay.isVisible = isForeground && gameState.value == GameStatus.IN_PROGRESS
             }
         }

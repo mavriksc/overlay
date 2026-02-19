@@ -1,23 +1,16 @@
 package org.mavriksc.overlay
 
-import com.sun.jna.platform.win32.Kernel32
-import com.sun.jna.platform.win32.User32
+import com.sun.jna.Pointer
+import com.sun.jna.platform.win32.*
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinDef.HWND
-import com.sun.jna.platform.win32.WinNT
-import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.platform.win32.WinUser.WinEventProc
 import com.sun.jna.ptr.IntByReference
-import kotlinx.coroutines.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.floatOrNull
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
 import org.mavriksc.overlay.lolservice.LiveGameEvent
 import java.util.concurrent.TimeUnit
 
@@ -67,6 +60,7 @@ class GameDetector {
             User32.INSTANCE.UnhookWinEvent(hook)
             User32.INSTANCE.UnhookWinEvent(hHook)
         })
+        ifGameIsRunningAlreadySetState()
 
         val msg = WinUser.MSG()
         while (User32.INSTANCE.GetMessage(msg, null, 0, 0) != 0) {
@@ -74,6 +68,43 @@ class GameDetector {
             User32.INSTANCE.DispatchMessage(msg)
         }
     }
+
+    private fun ifGameIsRunningAlreadySetState() {
+        val list = mutableListOf<String>()
+        val kernel = Kernel32.INSTANCE
+
+        val TH32CS_SNAPPROCESS = DWORD(Tlhelp32.TH32CS_SNAPPROCESS.toLong())
+        val hSnapshot: WinNT.HANDLE = kernel.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, WinDef.DWORD(0))
+        if (WinBase.INVALID_HANDLE_VALUE(hSnapshot)) {
+            return
+        }
+        try {
+            val pe32 = Tlhelp32.PROCESSENTRY32()
+            pe32.dwSize = DWORD(pe32.size().toLong())
+
+            if (!kernel.Process32First(hSnapshot, pe32)) {
+                return
+            }
+            do {
+                val exe = charArrayToString(pe32.szExeFile)
+                println(exe)
+                list.add(exe)
+            } while (kernel.Process32Next(hSnapshot, pe32))
+        } finally {
+            kernel.CloseHandle(hSnapshot)
+        }
+        if (list.contains(GAME_EXECUTABLE_NAME)) _currentGameState.value = GameStatus.IN_PROGRESS
+    }
+
+    private fun charArrayToString(chars: CharArray): String {
+        val sb = StringBuilder()
+        for (c in chars) {
+            if (c.code == 0) break
+            sb.append(c)
+        }
+        return sb.toString()
+    }
+
 
     private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
         if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
@@ -187,4 +218,13 @@ enum class GameStatus {
     LOADING,
     IN_PROGRESS,
     GAME_OVER
+}
+
+object WinBase {
+    fun INVALID_HANDLE_VALUE(handle: WinNT.HANDLE?): Boolean {
+        if (handle == null) return true
+        val pointer: Pointer = handle.pointer ?: return true
+        // INVALID_HANDLE_VALUE is (HANDLE) -1, which is pointer value of -1
+        return Pointer.nativeValue(pointer) == -1L
+    }
 }
