@@ -11,9 +11,10 @@ import java.io.Closeable
 import java.util.concurrent.TimeUnit
 
 class LiveClientService : Closeable {
-    // basically done here
-    // when the client starts to fail it means the game is closed. terminate the flow
-    // upstream when the flow terminates, propagate to the main window and update gameWasNotRunningLastCheck
+    // We're just going to kill this when the window closes and that will work.
+    // this should poll for game start event and game end event or add that to detector.
+    // but since it's info is from hitting game with api maybe here is better.
+
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
