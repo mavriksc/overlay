@@ -8,7 +8,6 @@ import kotlinx.coroutines.launch
 import org.mavriksc.overlay.lolservice.ActivePlayerData
 import org.mavriksc.overlay.lolservice.ChampDataService
 import org.mavriksc.overlay.lolservice.Champion
-import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.Color
 import java.io.Closeable
 
@@ -17,10 +16,8 @@ import java.io.Closeable
 //yellow <= 2
 //green > 2
 
-class BurndownCalculator(overlay: GameOverlay) : Closeable {
+class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlayerData?>) : Closeable {
     private val champDataService: ChampDataService = ChampDataService()
-    private val liveClientService: LiveClientService = LiveClientService()
-    private val activePlayerData: Flow<ActivePlayerData?> = liveClientService.activePlayerData
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Default + job)
     private var champion: Champion? = null
@@ -83,7 +80,6 @@ class BurndownCalculator(overlay: GameOverlay) : Closeable {
 
     private fun stop() {
         gameOver = true
-        liveClientService.close()
         job.cancel()
         println("Burndown calculator stopped")
     }

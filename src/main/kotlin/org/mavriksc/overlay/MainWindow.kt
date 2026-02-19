@@ -1,6 +1,7 @@
 package org.mavriksc.overlay
 
 import kotlinx.coroutines.*
+import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
 import javax.swing.*
 
@@ -23,54 +24,45 @@ class MainWindow : JFrame() {
     // ---Look into restarting the jobs
 
     private val overlay = GameOverlay()
-    private var burndownCalculator: BurndownCalculator? = null
     private val gameDetector = GameDetector()
     private val gameIsForeground = gameDetector.isGameForeground
     private val gameState = gameDetector.currentGameState
+    private var currentGameService: LiveClientService? = null
+    private var burndownCalculator: BurndownCalculator? = null
 
     init {
         title = "Overlay Settings"
         setSize(400, 300)
         setLocationRelativeTo(null)
         defaultCloseOperation = EXIT_ON_CLOSE
+        overlay.isVisible = false
         contentPane = buildControlsPanel()
         overlay.updateWindowBounds(
             GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
         )
-        overlay.isVisible = false
-
-
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch { gameDetector.detectGame() }
         scope.launch {
             gameIsForeground.collect { isForeground ->
                 println("Game is foreground: $isForeground")
+                // need some signal that we are actually in game. i thought i had it figured out but the false start isnt
+                // just the loading screen.  but the state moving forward works correctly
+                overlay.isVisible = isForeground
             }
         }
-
         scope.launch {
             gameState.collect { state ->
                 println("Game state: $state")
-//                if (isRunning) {
-//                    falseStartTimer?.let {
-//                        if (it.isRunning) {
-//
-//                        }
-//                    } ?: run {
-//                        falseStartTimer = Timer(1000) {
-//                            haveWeWaitedPatiently = true
-//                            falseStartTimer = null
-//                        }
-//                    }
-//
-//                } else {
-//
-//                }
-
+                if (state == GameStatus.IN_PROGRESS) {
+                    currentGameService = LiveClientService()
+                    burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
+                }
+                if (state == GameStatus.NOT_RUNNING) {
+                    currentGameService?.close()
+                    burndownCalculator?.close()
+                }
             }
         }
-
-
     }
 
     private fun buildControlsPanel(): JPanel {

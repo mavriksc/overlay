@@ -22,7 +22,7 @@ class LiveClientService : Closeable {
     val activePlayerData: StateFlow<ActivePlayerData?> = _activePlayerData.asStateFlow()
 
     init {
-        pollingJob = CoroutineScope(Dispatchers.Default).launch {
+        pollingJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
                 fetchActivePlayer()
                 delay(1_000)
