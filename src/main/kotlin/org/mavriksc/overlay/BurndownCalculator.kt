@@ -21,7 +21,7 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
     private var champion: Champion? = null
     private var lastChampionLevel = 0
     private var spellCosts = listOf(0.0f, 0.0f, 0.0f, 0.0f)
-    private var spellState = List(4) { Pair(Color.RED, false) }.toMutableList()
+    private var spellState = List(4) { Pair(Color.RED, false) }
 
     init {
         scope.launch {
@@ -55,22 +55,28 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
 
     private fun setSpellStatus(data: ActivePlayerData) {
         val availAfterFullRotation = data.currentResources - spellCosts.sum()
-        if (availAfterFullRotation >= 0) {
-            spellCosts.forEachIndexed { i, cost ->
-                val casts = if (cost > 0) availAfterFullRotation / cost else 9.0f
-                when {
-                    casts >= 2 -> spellState[i] = Pair(Color.GREEN, true)
-                    casts >= 1 -> spellState[i] = Pair(Color.YELLOW, true)
-                    else -> spellState[i] = Pair(Color.RED, true)
+        val spellKeys = data.spellLevels.keys.toList()
+        spellState = data.spellLevels.map { (spell, level) ->
+            val cost = spellCosts[spellKeys.indexOf(spell)]
+            when (level) {
+                0 -> Pair(Color.RED, false)
+                else -> {
+                    val casts = if (cost > 0) availAfterFullRotation / cost else 9.0f
+                    when {
+                        casts >= 2 -> Pair(Color.GREEN, true)
+                        casts >= 1 -> Pair(Color.YELLOW, true)
+                        else -> Pair(Color.RED, true)
+                    }
                 }
             }
-        } else spellState = List(4) { Pair(Color.RED, false) }.toMutableList()
+        }
     }
 
     private fun calculateSpellCosts(data: ActivePlayerData) =
         data.spellLevels.map { (spell, level) ->
             println("spell: $spell, level: $level")
-            champion!!.abilities.first { it.name == spell }.cost!![level]
+            if (level == 0) 0.0f else
+                champion!!.abilities.first { it.name == spell }.cost!![level]
         }
 
 }

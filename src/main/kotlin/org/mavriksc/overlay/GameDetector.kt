@@ -87,7 +87,6 @@ class GameDetector {
             }
             do {
                 val exe = charArrayToString(pe32.szExeFile)
-                println(exe)
                 list.add(exe)
             } while (kernel.Process32Next(hSnapshot, pe32))
         } finally {

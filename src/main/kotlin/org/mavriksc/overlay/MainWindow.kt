@@ -62,25 +62,21 @@ class MainWindow : JFrame() {
                             gameDetector.startEventsFlow()
                         }
                     }
-
                     GameStatus.IN_PROGRESS -> {
                         overlay.isVisible = gameIsForeground.value
                         currentGameService = LiveClientService()
                         burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
                     }
-
                     GameStatus.GAME_OVER -> {
                         currentGameService?.close()
                         currentGameService = null
                         overlay.isVisible = false
                     }
-
                     GameStatus.NOT_RUNNING -> {
                         currentGameService?.close()
                         currentGameService = null
                         overlay.isVisible = false
                     }
-
                     else -> {}
                 }
             }
