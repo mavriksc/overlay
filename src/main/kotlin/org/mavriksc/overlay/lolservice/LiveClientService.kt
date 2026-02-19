@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 class LiveClientService : Closeable {
     // basically done here
     // when the client starts to fail it means the game is closed. terminate the flow
-    // upstream when the flow terminates, propagate to main window and update gameWasNotRunningLastCheck
+    // upstream when the flow terminates, propagate to the main window and update gameWasNotRunningLastCheck
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")

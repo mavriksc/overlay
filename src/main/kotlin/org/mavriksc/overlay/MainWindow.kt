@@ -26,10 +26,7 @@ class MainWindow : JFrame() {
     private var burndownCalculator: BurndownCalculator? = null
     private val gameDetector = GameDetector()
     private val gameIsForeground = gameDetector.isGameForeground
-    private val gameIsRunning = gameDetector.isGameRunning
-    private var falseStartTimer: Timer? = null
-    private var haveWeWaitedPatiently = false
-
+    private val gameState = gameDetector.currentGameState
 
     init {
         title = "Overlay Settings"
@@ -52,8 +49,8 @@ class MainWindow : JFrame() {
         }
 
         scope.launch {
-            gameIsRunning.collect { isRunning ->
-                println("Game is running: $isRunning")
+            gameState.collect { state ->
+                println("Game state: $state")
 //                if (isRunning) {
 //                    falseStartTimer?.let {
 //                        if (it.isRunning) {

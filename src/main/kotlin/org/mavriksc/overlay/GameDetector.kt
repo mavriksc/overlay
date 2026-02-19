@@ -24,8 +24,8 @@ class GameDetector {
     private val _isGameForeground = MutableStateFlow(false)
     val isGameForeground: StateFlow<Boolean> = _isGameForeground.asStateFlow()
 
-    private val _isGameRunning = MutableStateFlow(false)
-    val isGameRunning: StateFlow<Boolean> = _isGameRunning.asStateFlow()
+    private val _currentGameState = MutableStateFlow(GameStatus.NOT_RUNNING)
+    val currentGameState: StateFlow<GameStatus> = _currentGameState.asStateFlow()
 
     fun detectGame() {
 
@@ -43,8 +43,8 @@ class GameDetector {
         )
 
         val allExeStartStopEventProc = WinEventProc { _, event, hwnd, _, _, _, _ ->
-                processExeStartStopEvent(event, hwnd)
-            }
+            processExeStartStopEvent(event, hwnd)
+        }
         val hHook = User32.INSTANCE.SetWinEventHook(
             EVENT_OBJECT_CREATE,
             EVENT_OBJECT_DESTROY,
@@ -67,10 +67,16 @@ class GameDetector {
 
     private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
         if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
-        if (DWORD(EVENT_OBJECT_CREATE.toLong()).compareTo(event) == 0) {
-            _isGameRunning.value = true
-        } else if (DWORD(EVENT_OBJECT_DESTROY.toLong()).compareTo(event) == 0) {
-            _isGameRunning.value = false
+        when (event.toInt()) {
+            EVENT_OBJECT_CREATE -> when (_currentGameState.value) {
+                GameStatus.NOT_RUNNING -> _currentGameState.value = GameStatus.LOADING
+                GameStatus.LOADING -> _currentGameState.value = GameStatus.IN_PROGRESS
+                else -> {}
+            }
+            EVENT_OBJECT_DESTROY -> when (_currentGameState.value) {
+                GameStatus.IN_PROGRESS -> _currentGameState.value = GameStatus.NOT_RUNNING
+                else -> {}
+            }
         }
     }
 
@@ -114,6 +120,12 @@ class GameDetector {
     }
 }
 
+enum class GameStatus {
+    NOT_RUNNING,
+    LOADING,
+    IN_PROGRESS
+}
+
 fun main() = runBlocking {
     val shutdownSignal = CompletableDeferred<Unit>()
 
@@ -130,20 +142,20 @@ fun main() = runBlocking {
     }
 
     val runningJob = launch(Dispatchers.IO) {
-        bgd.isGameRunning
+        bgd.currentGameState
             .collect { isRunning ->
                 println("League is running: $isRunning")
             }
     }
 
-        println("Foreground app logger running in background. Type 'q' and press Enter to exit.")
-        while (true) {
-            val line = readlnOrNull() ?: break
-            if (line.trim().equals("q", ignoreCase = true)) {
-                shutdownSignal.complete(Unit)
-                break
-            }
+    println("Foreground app logger running in background. Type 'q' and press Enter to exit.")
+    while (true) {
+        val line = readlnOrNull() ?: break
+        if (line.trim().equals("q", ignoreCase = true)) {
+            shutdownSignal.complete(Unit)
+            break
         }
+    }
 
     Runtime.getRuntime().addShutdownHook(Thread {
         shutdownSignal.complete(Unit)
