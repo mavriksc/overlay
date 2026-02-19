@@ -56,6 +56,7 @@ class MainWindow : JFrame() {
                 if (state == GameStatus.IN_PROGRESS) {
                     currentGameService = LiveClientService()
                     burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
+                    scope.launch { currentGameService!!.events.collect { println(it) } }
                 }
                 if (state == GameStatus.NOT_RUNNING) {
                     currentGameService?.close()
