@@ -11,9 +11,9 @@ import java.io.Closeable
 import java.util.concurrent.TimeUnit
 
 class LiveClientService : Closeable {
-    // We're just going to kill this when the window closes and that will work.
-    // this should poll for game start event and game end event or add that to detector.
-    // but since it's info is from hitting game with api maybe here is better.
+    // We're just going to kill this when the window closes, and that will work.
+    // this should poll for game start event and game end event or add that to the detector.
+    // but since its info is from hitting game with api maybe here is better.
 
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
