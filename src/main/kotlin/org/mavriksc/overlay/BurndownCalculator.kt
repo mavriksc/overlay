@@ -75,7 +75,7 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
         data.spellLevels.map { (spell, level) ->
             println("spell: $spell, level: $level")
             if (level == 0) 0.0f else
-                champion!!.abilities.first { it.name == spell }.cost!![level]
+                champion!!.abilities.first { it.name == spell }.cost!![level - 1]
         }
 
 }
