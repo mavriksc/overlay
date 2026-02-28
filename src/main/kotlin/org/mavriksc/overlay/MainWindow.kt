@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
+import javax.imageio.ImageIO
 import javax.swing.*
 
 class MainWindow : JFrame() {
@@ -34,6 +35,7 @@ class MainWindow : JFrame() {
 
     init {
         title = "Overlay Settings"
+        applyAppIcon()
         setSize(400, 300)
         setLocationRelativeTo(null)
         defaultCloseOperation = EXIT_ON_CLOSE
@@ -80,6 +82,13 @@ class MainWindow : JFrame() {
                 }
             }
         }
+    }
+
+    private fun applyAppIcon() {
+        val iconUrl = javaClass.getResource("/icon.png") ?: return
+        val iconImage = ImageIO.read(iconUrl) ?: return
+        setIconImage(iconImage)
+        iconImages = listOf(iconImage)
     }
 
     private fun buildControlsPanel(): JPanel {
