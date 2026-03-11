@@ -8,6 +8,7 @@ import org.mavriksc.overlay.lolservice.ActivePlayerData
 import org.mavriksc.overlay.lolservice.ChampDataService
 import org.mavriksc.overlay.lolservice.Champion
 import java.awt.Color
+import javax.swing.SwingUtilities
 
 //how many casts of a spell before you can't cast a full rotation
 //red <= 1
@@ -30,6 +31,7 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
                         //println("Received active player data: $it")
                         champion?.let { _ -> everyUpdate(it) } ?: gameStartStuff(it)
                         overlay.spellStates = spellState.toList()
+                        SwingUtilities.invokeLater { overlay.repaint() }
                     }
                 }
         }

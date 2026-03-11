@@ -4,6 +4,7 @@ import java.awt.*
 import javax.swing.JFrame
 import javax.swing.Timer
 import kotlin.random.Random
+import kotlin.math.roundToInt
 
 
 //this is for my ui. will need to get scale of hud and map from client and resolution in the future
@@ -22,14 +23,27 @@ data class OverlayConfig(
     var westColor: Color = Color.YELLOW,
     var dodgeTimer: Int = 1_000,
     var mapTimer: Int = 5_000,
-    var mapFlashTime: Int = 250
+    var mapFlashTime: Int = 250,
+    var mapOnLeft: Boolean = false,
+    // Percent 0-100
+    var mapScale: Double = 33.0,
+    var hudScale: Double = 0.0
 )
 
 class GameOverlay : JFrame() {
-    private val fullScreenBounds =
+    val fullScreenBounds: Rectangle? =
         GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
     var config = OverlayConfig(
-        mapRect = Rectangle(fullScreenBounds.width - 370, fullScreenBounds.height - 370, 350, 350),
+        mapRect = run {
+            val scaleFactor = 1.0 + (33.0 / 100.0)
+            val mapFull = 280.0 * scaleFactor
+            Rectangle(
+                (fullScreenBounds!!.width - mapFull).roundToInt(),
+                (fullScreenBounds.height - mapFull).roundToInt(),
+                (mapFull - 20.0).roundToInt(),
+                (mapFull - 20.0).roundToInt()
+            )
+        },
         northColor = Color.GREEN,
         southColor = Color.GREEN,
         eastColor = Color.GREEN,
@@ -42,11 +56,23 @@ class GameOverlay : JFrame() {
     private var dodgeDir = Random.nextBoolean()
     private var flashMap = false
     private val p1 = Pair(20, 20)
-    private val p2 = Pair(fullScreenBounds.width - 20, 20)
-    private val p3 = Pair(fullScreenBounds.width - 20, fullScreenBounds.height - 20)
-    private val p4 = Pair(20, fullScreenBounds.height - 20)
-    private val topLefts = listOf(Pair(1079, 1325), Pair(1137, 1325), Pair(1196, 1325), Pair(1255, 1325))
-    private val hxw = Pair(20, 10)
+    private val p2 = Pair(fullScreenBounds!!.width - 20, 20)
+    private val p3 = Pair(fullScreenBounds!!.width - 20, fullScreenBounds.height - 20)
+    private val p4 = Pair(20, fullScreenBounds!!.height - 20)
+    private val topLeftsScale0 = listOf(
+        Point(1079, 1325),
+        Point(1137, 1325),
+        Point(1196, 1325),
+        Point(1255, 1325)
+    )
+    private val topLeftsScale100 = listOf(
+        Point(974, 1265),
+        Point(1063, 1264),
+        Point(1152, 1265),
+        Point(1241, 1265)
+    )
+    private val spellSizeScale0 = Pair(20, 10)
+    private val spellSizeScale100 = Pair(spellSizeScale0.x() * 2, spellSizeScale0.y() * 2)
 
 
     init {
@@ -90,7 +116,8 @@ class GameOverlay : JFrame() {
 
     private fun drawMapLook(g2d: Graphics2D) {
         g2d.color = config.mapFlashColor
-        g2d.fillRect(config.mapRect.x, config.mapRect.y, config.mapRect.width, config.mapRect.height)
+        val x = if (config.mapOnLeft) 0 else config.mapRect.x
+        g2d.fillRect(x, config.mapRect.y, config.mapRect.width, config.mapRect.height)
     }
 
     private fun drawDodgeDirection(g2d: Graphics2D) {
@@ -116,10 +143,14 @@ class GameOverlay : JFrame() {
     }
 
     private fun drawSpellPacing(g2d: Graphics2D) {
+        val percent = config.hudScale.roundToInt().coerceIn(0, 100)
+        val spellWidth = intBetween(spellSizeScale0.x(), spellSizeScale100.x(), percent)
+        val spellHeight = intBetween(spellSizeScale0.y(), spellSizeScale100.y(), percent)
         spellStates?.forEachIndexed { i, state ->
             if (state.second) {
                 g2d.color = state.first
-                g2d.fillRect(topLefts[i].x(), topLefts[i].y(), hxw.x(), hxw.y())
+                val topLeft = pointBetween(topLeftsScale0[i], topLeftsScale100[i], percent)
+                g2d.fillRect(topLeft.x, topLeft.y, spellWidth, spellHeight)
             }
         }
     }

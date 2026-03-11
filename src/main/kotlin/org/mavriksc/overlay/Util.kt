@@ -3,6 +3,7 @@ package org.mavriksc.overlay
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.awt.Point
 import java.nio.file.Files
 import java.security.KeyStore
 import java.security.cert.CertificateException
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+import kotlin.math.roundToInt
 import kotlin.io.path.Path
 
 fun String.toRequest(): Request = Request.Builder().url(this).build()
@@ -80,6 +82,19 @@ fun getOkHttpClientForGameClient(timeout: Long = 1, unit: TimeUnit = TimeUnit.SE
         .build()
 }
 
+
 fun <A, B> Pair<A,B>.x() = first
 fun <A, B> Pair<A,B>.y() = second
+
+fun pointBetween(a: Point, b: Point, percent: Int): Point {
+    val t = percent.coerceIn(0, 100) / 100.0
+    val x = (a.x + (b.x - a.x) * t).roundToInt()
+    val y = (a.y + (b.y - a.y) * t).roundToInt()
+    return Point(x, y)
+}
+
+fun intBetween(a: Int, b: Int, percent: Int): Int {
+    val t = percent.coerceIn(0, 100) / 100.0
+    return (a + (b - a) * t).roundToInt()
+}
 

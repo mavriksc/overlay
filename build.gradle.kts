@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "2.2.21"
     kotlin("plugin.serialization") version "2.3.0"
+    application
 }
 
 group = "org.mavriksc"
@@ -24,6 +25,50 @@ dependencies {
 
 kotlin {
     jvmToolchain(22)
+}
+
+application {
+    // Kotlin top-level main in Application.kt
+    mainClass.set("org.mavriksc.overlay.ApplicationKt")
+}
+
+tasks.jar {
+    // Build a runnable fat JAR on the classpath (no module-info required).
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+}
+
+val fatJar = tasks.named<Jar>("jar")
+
+tasks.register<Exec>("jpackageImage") {
+    dependsOn(fatJar)
+    group = "distribution"
+    description = "Builds a standalone app image with a launcher exe (no installer)."
+
+    val toolchainLauncher = javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(22))
+    }
+    val jpackageExe = toolchainLauncher.map { launcher ->
+        launcher.metadata.installationPath.file("bin/jpackage").asFile.absolutePath
+    }
+
+    val jarFile = fatJar.get().archiveFile.get().asFile
+    val outputDir = layout.buildDirectory.dir("jpackage")
+
+    doFirst {
+        commandLine(
+            jpackageExe.get(),
+            "--type", "app-image",
+            "--name", "Overlay",
+            "--input", jarFile.parentFile.absolutePath,
+            "--main-jar", jarFile.name,
+            "--main-class", application.mainClass.get(),
+            "--dest", outputDir.get().asFile.absolutePath
+        )
+    }
 }
 
 tasks.test {

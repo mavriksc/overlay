@@ -4,8 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
+import java.awt.Image
+import java.awt.Rectangle
 import javax.imageio.ImageIO
 import javax.swing.*
 
@@ -32,6 +35,8 @@ class MainWindow : JFrame() {
     private val gameState = gameDetector.currentGameState
     private var currentGameService: LiveClientService? = null
     private var burndownCalculator: BurndownCalculator? = null
+    private val settingsReader = PersistedSettingsReader()
+    private var persistentGameSettings = settingsReader.read()
 
     init {
         title = "Overlay Settings"
@@ -40,12 +45,32 @@ class MainWindow : JFrame() {
         setLocationRelativeTo(null)
         defaultCloseOperation = EXIT_ON_CLOSE
         overlay.isVisible = false
+
         contentPane = buildControlsPanel()
         overlay.updateWindowBounds(
             GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
         )
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch { gameDetector.detectGame() }
+        scope.launch {
+            settingsReader.settingsFlow().collect { settings ->
+                val displayBounds = overlay.fullScreenBounds
+                persistentGameSettings = settings
+                overlay.config.mapOnLeft = settings.mapOnLeft
+                overlay.config.mapScale = settings.minimapScale.toDouble()
+                overlay.config.hudScale = settings.hudScale.toDouble()
+                val scaleFactor = 1.0 + (overlay.config.mapScale / 100.0)
+                println("Scale Factor: $scaleFactor")
+                val mapFull = 280.0 * scaleFactor
+                overlay.config.mapRect = Rectangle(
+                    (displayBounds!!.width - mapFull).toInt(),
+                    (displayBounds.height - mapFull).toInt(),
+                    (mapFull - 20.0).toInt(),
+                    (mapFull - 20.0).toInt()
+                )
+                overlay.repaint()
+            }
+        }
         scope.launch {
             gameIsForeground.collect { isForeground ->
                 println("Game is foreground: $isForeground")
