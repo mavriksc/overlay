@@ -2,172 +2,192 @@ package org.mavriksc.overlay
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
-import java.awt.Image
 import java.awt.Rectangle
-import javax.imageio.ImageIO
-import javax.swing.*
 
-class MainWindow : JFrame() {
-    // CONTROLS:
-    //  for activation of the 3 tools - DONE
-    //  actual burndown calculations - DONE
-    //  Dodge dir and map look color - DONE
-    //  and rates
-    //  Label to show the status of the game
-
-    // TODO
-    // - settings for timers
-    // - option for full map flash or surrounding rect. if rect the thickness can be set
-    //    - only enable for mana champions
-
-    // known issues
-    // after the game ends and into a new game it will not have reset things to start back up correctly
-    // ---Look into restarting the jobs
-
+class MainWindow(
+    private val settingsStore: AppSettingsStore = AppSettingsStore()
+) {
     private val overlay = GameOverlay()
     private val gameDetector = GameDetector()
     private val gameIsForeground = gameDetector.isGameForeground
     private val gameState = gameDetector.currentGameState
+    private val gameBounds = gameDetector.currentGameBounds
+    private val gameWindowId = gameDetector.currentGameWindowId
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentGameService: LiveClientService? = null
     private var burndownCalculator: BurndownCalculator? = null
+    private var eventsJob: kotlinx.coroutines.Job? = null
+    private var boundRuntimeWindowId: Long? = null
     private val settingsReader = PersistedSettingsReader()
-    private var persistentGameSettings = settingsReader.read()
+    private val _persistedGameSettings = MutableStateFlow(settingsReader.read())
+    val persistedGameSettings: StateFlow<PersistedGameSettings?> = _persistedGameSettings.asStateFlow()
+    val appSettings: StateFlow<AppSettings> = settingsStore.settings
+    val currentGameBounds: StateFlow<Rectangle?> = gameBounds
+    val currentGameState: StateFlow<GameStatus> = gameState
+    val isGameForeground: StateFlow<Boolean> = gameIsForeground
+
+    private val defaultDisplayBounds: Rectangle =
+        GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
 
     init {
-        title = "Overlay Settings"
-        applyAppIcon()
-        setSize(400, 300)
-        setLocationRelativeTo(null)
-        defaultCloseOperation = EXIT_ON_CLOSE
         overlay.isVisible = false
+        overlay.updateWindowBounds(defaultDisplayBounds)
+        applyRuntimeConfig()
+        startRuntime()
+    }
 
-        contentPane = buildControlsPanel()
-        overlay.updateWindowBounds(
-            GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
-        )
-        val scope = CoroutineScope(Dispatchers.IO)
+    fun updateFeatures(transform: (FeatureSettings) -> FeatureSettings) {
+        settingsStore.update { it.copy(features = transform(it.features)) }
+    }
+
+    fun updateTiming(transform: (TimingSettings) -> TimingSettings) {
+        settingsStore.update { it.copy(timing = transform(it.timing)) }
+    }
+
+    fun updateAppearance(transform: (AppearanceSettings) -> AppearanceSettings) {
+        settingsStore.update { it.copy(appearance = transform(it.appearance)) }
+    }
+
+    fun updateCalibration(transform: (CalibrationSettings) -> CalibrationSettings) {
+        settingsStore.update { it.copy(calibration = transform(it.calibration)) }
+    }
+
+    fun resetCalibration() {
+        settingsStore.resetCalibration()
+    }
+
+    fun resetAllSettings() {
+        settingsStore.resetAll()
+    }
+
+    fun previewMapFlash() {
+        overlay.previewMapFlash()
+    }
+
+    fun previewDodgeCue() {
+        overlay.previewDodgeFlip()
+    }
+
+    fun close() {
+        scope.cancel()
+        currentGameService?.close()
+        currentGameService = null
+        eventsJob?.cancel()
+        eventsJob = null
+        overlay.isVisible = false
+        overlay.dispose()
+    }
+
+    private fun startRuntime() {
         scope.launch { gameDetector.detectGame() }
+        scope.launch { gameDetector.monitorGameLifecycle() }
+        scope.launch {
+            appSettings.collect {
+                applyRuntimeConfig()
+                updateOverlayVisibility()
+            }
+        }
         scope.launch {
             settingsReader.settingsFlow().collect { settings ->
-                val displayBounds = overlay.fullScreenBounds
-                persistentGameSettings = settings
-                overlay.config.mapOnLeft = settings.mapOnLeft
-                overlay.config.mapScale = settings.minimapScale.toDouble()
-                overlay.config.hudScale = settings.hudScale.toDouble()
-                val scaleFactor = 1.0 + (overlay.config.mapScale / 100.0)
-                println("Scale Factor: $scaleFactor")
-                val mapFull = 280.0 * scaleFactor
-                overlay.config.mapRect = Rectangle(
-                    (displayBounds!!.width - mapFull).toInt(),
-                    (displayBounds.height - mapFull).toInt(),
-                    (mapFull - 20.0).toInt(),
-                    (mapFull - 20.0).toInt()
-                )
+                _persistedGameSettings.value = settings
+                applyRuntimeConfig()
+            }
+        }
+        scope.launch {
+            gameBounds.collect { bounds ->
+                overlay.updateWindowBounds(bounds ?: defaultDisplayBounds)
                 overlay.repaint()
             }
         }
         scope.launch {
-            gameIsForeground.collect { isForeground ->
-                println("Game is foreground: $isForeground")
-                overlay.isVisible = isForeground && gameState.value == GameStatus.IN_PROGRESS
+            gameWindowId.collect { windowId ->
+                if (windowId != null && boundRuntimeWindowId != null && boundRuntimeWindowId != windowId) {
+                    rebindGameRuntime()
+                }
+            }
+        }
+        scope.launch {
+            gameIsForeground.collect {
+                updateOverlayVisibility()
             }
         }
         scope.launch {
             gameState.collect { state ->
-                println("Game state: $state")
                 when (state) {
                     GameStatus.LOADING -> {
-                        scope.launch {
-                            delay(5000)
-                            println("Starting events flow")
-                            gameDetector.startEventsFlow()
+                        if (eventsJob?.isActive != true) {
+                            eventsJob = scope.launch {
+                                delay(5000)
+                                gameDetector.startEventsFlow()
+                            }
                         }
                     }
+
                     GameStatus.IN_PROGRESS -> {
-                        overlay.isVisible = gameIsForeground.value
-                        currentGameService = LiveClientService()
-                        burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
+                        if (eventsJob?.isActive != true) {
+                            eventsJob = scope.launch {
+                                gameDetector.startEventsFlow()
+                            }
+                        }
+                        ensureLiveClientBound()
                     }
-                    GameStatus.GAME_OVER -> {
-                        currentGameService?.close()
-                        currentGameService = null
-                        overlay.isVisible = false
-                    }
+
+                    GameStatus.GAME_OVER,
                     GameStatus.NOT_RUNNING -> {
                         currentGameService?.close()
                         currentGameService = null
+                        burndownCalculator = null
+                        boundRuntimeWindowId = null
+                        eventsJob?.cancel()
+                        eventsJob = null
                         overlay.isVisible = false
                     }
+
                     else -> {}
                 }
+                updateOverlayVisibility()
             }
         }
     }
 
-    private fun applyAppIcon() {
-        val iconUrl = javaClass.getResource("/icon.png") ?: return
-        val iconImage = ImageIO.read(iconUrl) ?: return
-        setIconImage(iconImage)
-        iconImages = listOf(iconImage)
+    private fun applyRuntimeConfig() {
+        overlay.updateConfig(appSettings.value.toOverlayConfig(_persistedGameSettings.value))
     }
 
-    private fun buildControlsPanel(): JPanel {
-        val panel = JPanel()
-        panel.layout = BoxLayout(panel, BoxLayout.Y_AXIS)
-
-        val mapLookCheck = JCheckBox("Enable map look timer", overlay.config.enableMapLookTimer)
-        mapLookCheck.addActionListener {
-            overlay.config.enableMapLookTimer = mapLookCheck.isSelected
-            overlay.repaint()
+    private fun ensureLiveClientBound() {
+        val currentWindowId = gameWindowId.value
+        if (currentGameService == null || (currentWindowId != null && boundRuntimeWindowId != currentWindowId)) {
+            currentGameService?.close()
+            currentGameService = LiveClientService()
+            burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
+            boundRuntimeWindowId = currentWindowId
         }
+    }
 
-        val spellPacingCheck = JCheckBox("Enable spell pacing", overlay.config.enableSpellPacing)
-        spellPacingCheck.addActionListener {
-            overlay.config.enableSpellPacing = spellPacingCheck.isSelected
-            overlay.repaint()
+    private fun rebindGameRuntime() {
+        currentGameService?.close()
+        currentGameService = null
+        burndownCalculator = null
+        boundRuntimeWindowId = null
+        if (gameState.value == GameStatus.IN_PROGRESS) {
+            ensureLiveClientBound()
         }
+    }
 
-        val dodgeDirCheck = JCheckBox("Enable dodge direction", overlay.config.enableDodgeDirection)
-        dodgeDirCheck.addActionListener {
-            overlay.config.enableDodgeDirection = dodgeDirCheck.isSelected
-            overlay.repaint()
-        }
-
-        val mapFlashColorButton = JButton("Map flash color...")
-        mapFlashColorButton.addActionListener {
-            val chosen = JColorChooser.showDialog(
-                this, "Map Flash Color", overlay.config.mapFlashColor
-            )
-            if (chosen != null) {
-                overlay.config.mapFlashColor = chosen
-                overlay.repaint()
-            }
-        }
-
-        val dodgeColorsButton = JButton("Dodge direction color...")
-        dodgeColorsButton.addActionListener {
-            val chosen = JColorChooser.showDialog(
-                this, "Dodge Direction Color", overlay.config.northColor
-            )
-            if (chosen != null) {
-                overlay.config.northColor = chosen
-                overlay.config.southColor = chosen
-                overlay.config.eastColor = chosen
-                overlay.config.westColor = chosen
-                overlay.repaint()
-            }
-        }
-
-        panel.add(mapLookCheck)
-        panel.add(spellPacingCheck)
-        panel.add(dodgeDirCheck)
-        panel.add(mapFlashColorButton)
-        panel.add(dodgeColorsButton)
-        return panel
+    private fun updateOverlayVisibility() {
+        val settings = appSettings.value
+        val visibleByState = gameState.value == GameStatus.IN_PROGRESS
+        val visibleByForeground = !settings.features.showOnlyWhileForeground || gameIsForeground.value
+        overlay.isVisible = visibleByState && visibleByForeground
     }
 }

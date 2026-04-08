@@ -1,13 +1,17 @@
 plugins {
+    id("org.jetbrains.compose") version "1.8.2"
     kotlin("jvm") version "2.2.21"
+    kotlin("plugin.compose") version "2.2.21"
     kotlin("plugin.serialization") version "2.3.0"
-    application
 }
+
+val appMainClass = "org.mavriksc.overlay.ApplicationKt"
 
 group = "org.mavriksc"
 version = "1.0-SNAPSHOT"
 
 repositories {
+    google()
     mavenCentral()
 }
 
@@ -20,6 +24,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0-RC")
+    implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
 
 }
 
@@ -27,16 +33,17 @@ kotlin {
     jvmToolchain(22)
 }
 
-application {
-    // Kotlin top-level main in Application.kt
-    mainClass.set("org.mavriksc.overlay.ApplicationKt")
+compose.desktop {
+    application {
+        mainClass = appMainClass
+    }
 }
 
 tasks.jar {
     // Build a runnable fat JAR on the classpath (no module-info required).
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
-        attributes["Main-Class"] = application.mainClass.get()
+        attributes["Main-Class"] = appMainClass
     }
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }
@@ -65,7 +72,7 @@ tasks.register<Exec>("jpackageImage") {
             "--name", "Overlay",
             "--input", jarFile.parentFile.absolutePath,
             "--main-jar", jarFile.name,
-            "--main-class", application.mainClass.get(),
+            "--main-class", appMainClass,
             "--dest", outputDir.get().asFile.absolutePath
         )
     }

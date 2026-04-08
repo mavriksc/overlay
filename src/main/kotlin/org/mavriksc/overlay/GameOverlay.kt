@@ -1,21 +1,19 @@
 package org.mavriksc.overlay
 
-import java.awt.*
+import java.awt.BasicStroke
+import java.awt.Color
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.Point
+import java.awt.Rectangle
 import javax.swing.JFrame
 import javax.swing.Timer
 import kotlin.random.Random
-import kotlin.math.roundToInt
-
-
-//this is for my ui. will need to get scale of hud and map from client and resolution in the future
-//spell top left locations["1079,1325","1137,1325","1196,1325","1255,1325"] 20wx10h
-//map 372 × 373 @ (2188, 1067) 370x370 in from bottom right 350x350 in size
 
 data class OverlayConfig(
     var enableSpellPacing: Boolean = true,
     var enableMapLookTimer: Boolean = true,
     var enableDodgeDirection: Boolean = true,
-    var mapRect: Rectangle,
     var mapFlashColor: Color = Color.WHITE,
     var northColor: Color = Color.RED,
     var southColor: Color = Color.BLUE,
@@ -24,83 +22,77 @@ data class OverlayConfig(
     var dodgeTimer: Int = 1_000,
     var mapTimer: Int = 5_000,
     var mapFlashTime: Int = 250,
+    var showOnlyWhenGameForeground: Boolean = true,
     var mapOnLeft: Boolean = false,
-    // Percent 0-100
     var mapScale: Double = 33.0,
-    var hudScale: Double = 0.0
+    var hudScale: Double = 0.0,
+    var minimapOffset: Point = Point(),
+    var minimapPaddingAdjust: Int = 0,
+    var dodgeInsetAdjust: Int = 0,
+    var spellHorizontalOffsetAdjust: Int = 0,
+    var spellBottomOffsetAdjust: Int = 0,
+    var spellWidthScaleAdjust: Double = 0.0,
+    var spellHeightScaleAdjust: Double = 0.0,
+    var spellSpacingScaleAdjust: Double = 0.0
 )
 
 class GameOverlay : JFrame() {
-    val fullScreenBounds: Rectangle? =
-        GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
     var config = OverlayConfig(
-        mapRect = run {
-            val scaleFactor = 1.0 + (33.0 / 100.0)
-            val mapFull = 280.0 * scaleFactor
-            Rectangle(
-                (fullScreenBounds!!.width - mapFull).roundToInt(),
-                (fullScreenBounds.height - mapFull).roundToInt(),
-                (mapFull - 20.0).roundToInt(),
-                (mapFull - 20.0).roundToInt()
-            )
-        },
-        northColor = Color.GREEN,
-        southColor = Color.GREEN,
-        eastColor = Color.GREEN,
-        westColor = Color.GREEN,
-        mapFlashColor = Color.WHITE,
-        dodgeTimer = 1_000,
-        mapTimer = 5_000
+        northColor = Color(0x3D, 0xE0, 0x7A),
+        southColor = Color(0x3D, 0xE0, 0x7A),
+        eastColor = Color(0x3D, 0xE0, 0x7A),
+        westColor = Color(0x3D, 0xE0, 0x7A),
+        mapFlashColor = Color.WHITE
     )
+        private set
+
     var spellStates: List<Pair<Color, Boolean>>? = null
     private var dodgeDir = Random.nextBoolean()
     private var flashMap = false
-    private val p1 = Pair(20, 20)
-    private val p2 = Pair(fullScreenBounds!!.width - 20, 20)
-    private val p3 = Pair(fullScreenBounds!!.width - 20, fullScreenBounds.height - 20)
-    private val p4 = Pair(20, fullScreenBounds!!.height - 20)
-    private val topLeftsScale0 = listOf(
-        Point(1079, 1325),
-        Point(1137, 1325),
-        Point(1196, 1325),
-        Point(1255, 1325)
-    )
-    private val topLeftsScale100 = listOf(
-        Point(974, 1265),
-        Point(1063, 1264),
-        Point(1152, 1265),
-        Point(1241, 1265)
-    )
-    private val spellSizeScale0 = Pair(20, 10)
-    private val spellSizeScale100 = Pair(spellSizeScale0.x() * 2, spellSizeScale0.y() * 2)
-
+    private var dodgeTimerRef: Timer? = null
+    private var mapTimerRef: Timer? = null
+    private var mapFlashResetTimer: Timer? = null
 
     init {
         isUndecorated = true
         isAlwaysOnTop = true
         background = Color(0, 0, 0, 0)
         focusableWindowState = false
-        //start timers
-        Timer(config.dodgeTimer) {
-            val next = Random.nextBoolean()
-            if (next != dodgeDir) {
-                dodgeDir = next
-                repaint()
-            }
-        }.start()
-
-        Timer(config.mapTimer) {
-            flashMap = true
-            repaint()
-            Timer(config.mapFlashTime) {
-                flashMap = false
-                repaint()
-            }.apply { isRepeats = false }.start()
-        }.start()
+        restartTimers()
     }
 
-    fun updateWindowBounds(b: Rectangle) {
-        bounds = b
+    fun updateConfig(newConfig: OverlayConfig) {
+        val restartTimers =
+            newConfig.dodgeTimer != config.dodgeTimer ||
+                    newConfig.mapTimer != config.mapTimer ||
+                    newConfig.mapFlashTime != config.mapFlashTime
+        config = newConfig
+        if (restartTimers) {
+            restartTimers()
+        }
+        repaint()
+    }
+
+    fun updateWindowBounds(windowBounds: Rectangle) {
+        bounds = windowBounds
+    }
+
+    fun previewMapFlash() {
+        flashMap = true
+        repaint()
+        mapFlashResetTimer?.stop()
+        mapFlashResetTimer = Timer(config.mapFlashTime) {
+            flashMap = false
+            repaint()
+        }.apply {
+            isRepeats = false
+            start()
+        }
+    }
+
+    fun previewDodgeFlip() {
+        dodgeDir = !dodgeDir
+        repaint()
     }
 
     override fun paint(g: Graphics) {
@@ -115,43 +107,87 @@ class GameOverlay : JFrame() {
     }
 
     private fun drawMapLook(g2d: Graphics2D) {
+        val layout = currentLayout()
         g2d.color = config.mapFlashColor
-        val x = if (config.mapOnLeft) 0 else config.mapRect.x
-        g2d.fillRect(x, config.mapRect.y, config.mapRect.width, config.mapRect.height)
+        g2d.fillRect(layout.mapRect.x, layout.mapRect.y, layout.mapRect.width, layout.mapRect.height)
     }
 
     private fun drawDodgeDirection(g2d: Graphics2D) {
-        //True is up or left, and false is down or right
+        val layout = currentLayout()
+        val minX = layout.dodgeInset
+        val minY = layout.dodgeInset
+        val maxX = width - layout.dodgeInset
+        val maxY = height - layout.dodgeInset
+
         g2d.stroke = BasicStroke(2f)
         if (dodgeDir) {
-            //draw top
             g2d.color = config.northColor
-            g2d.drawLine(p1.x(), p1.y(), p2.x(), p2.y())
+            g2d.drawLine(minX, minY, maxX, minY)
 
-            //draw left
             g2d.color = config.westColor
-            g2d.drawLine(p1.x(), p1.y(), p4.x(), p4.y())
+            g2d.drawLine(minX, minY, minX, maxY)
         } else {
-            //draw bottom
             g2d.color = config.southColor
-            g2d.drawLine(p4.x(), p4.y(), p3.x(), p3.y())
+            g2d.drawLine(minX, maxY, maxX, maxY)
 
-            //draw right
             g2d.color = config.eastColor
-            g2d.drawLine(p2.x(), p2.y(), p3.x(), p3.y())
+            g2d.drawLine(maxX, minY, maxX, maxY)
         }
     }
 
     private fun drawSpellPacing(g2d: Graphics2D) {
-        val percent = config.hudScale.roundToInt().coerceIn(0, 100)
-        val spellWidth = intBetween(spellSizeScale0.x(), spellSizeScale100.x(), percent)
-        val spellHeight = intBetween(spellSizeScale0.y(), spellSizeScale100.y(), percent)
+        val layout = currentLayout()
+        val spellWidth = layout.spellSize.x()
+        val spellHeight = layout.spellSize.y()
         spellStates?.forEachIndexed { i, state ->
             if (state.second) {
                 g2d.color = state.first
-                val topLeft = pointBetween(topLeftsScale0[i], topLeftsScale100[i], percent)
+                val topLeft = layout.spellTopLefts[i]
                 g2d.fillRect(topLeft.x, topLeft.y, spellWidth, spellHeight)
             }
         }
+    }
+
+    private fun currentLayout(): OverlayLayoutMetrics =
+        OverlayLayoutMetrics.from(
+            windowBounds = bounds,
+            hudScale = config.hudScale,
+            minimapScale = config.mapScale,
+            mapOnLeft = config.mapOnLeft,
+            minimapOffset = config.minimapOffset,
+            minimapPaddingAdjust = config.minimapPaddingAdjust,
+            dodgeInsetAdjust = config.dodgeInsetAdjust,
+            spellHorizontalOffsetAdjust = config.spellHorizontalOffsetAdjust,
+            spellBottomOffsetAdjust = config.spellBottomOffsetAdjust,
+            spellWidthScaleAdjust = config.spellWidthScaleAdjust,
+            spellHeightScaleAdjust = config.spellHeightScaleAdjust,
+            spellSpacingScaleAdjust = config.spellSpacingScaleAdjust
+        )
+
+    private fun restartTimers() {
+        dodgeTimerRef?.stop()
+        mapTimerRef?.stop()
+        mapFlashResetTimer?.stop()
+
+        dodgeTimerRef = Timer(config.dodgeTimer) {
+            val next = Random.nextBoolean()
+            if (next != dodgeDir) {
+                dodgeDir = next
+                repaint()
+            }
+        }.apply { start() }
+
+        mapTimerRef = Timer(config.mapTimer) {
+            flashMap = true
+            repaint()
+            mapFlashResetTimer?.stop()
+            mapFlashResetTimer = Timer(config.mapFlashTime) {
+                flashMap = false
+                repaint()
+            }.apply {
+                isRepeats = false
+                start()
+            }
+        }.apply { start() }
     }
 }

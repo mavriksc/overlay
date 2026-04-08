@@ -1,18 +1,35 @@
 package org.mavriksc.overlay
 
 import com.sun.jna.Pointer
-import com.sun.jna.platform.win32.*
+import com.sun.jna.platform.win32.Kernel32
+import com.sun.jna.platform.win32.Tlhelp32
+import com.sun.jna.platform.win32.User32
+import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinDef.HWND
+import com.sun.jna.platform.win32.WinDef.RECT
+import com.sun.jna.platform.win32.WinNT
+import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.platform.win32.WinUser.WinEventProc
 import com.sun.jna.ptr.IntByReference
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.mavriksc.overlay.lolservice.LiveGameEvent
+import java.awt.Rectangle
 import java.util.concurrent.TimeUnit
+
+data class TrackedGameWindow(
+    val handleId: Long,
+    val bounds: Rectangle
+)
 
 class GameDetector {
     private val EVENT_SYSTEM_FOREGROUND = 0x0003
@@ -30,10 +47,15 @@ class GameDetector {
     private val _currentGameState = MutableStateFlow(GameStatus.NOT_RUNNING)
     val currentGameState: StateFlow<GameStatus> = _currentGameState.asStateFlow()
 
-    fun detectGame() {
+    private val _currentGameBounds = MutableStateFlow<Rectangle?>(null)
+    val currentGameBounds: StateFlow<Rectangle?> = _currentGameBounds.asStateFlow()
 
-        val foregroundEventProc = WinEventProc { _, _, hwnd, _, _, _, _ ->
-            _isGameForeground.value = exeNameFromHwnd(hwnd) == GAME_EXECUTABLE_NAME
+    private val _currentGameWindowId = MutableStateFlow<Long?>(null)
+    val currentGameWindowId: StateFlow<Long?> = _currentGameWindowId.asStateFlow()
+
+    fun detectGame() {
+        val foregroundEventProc = WinEventProc { _, _, _, _, _, _, _ ->
+            refreshWindowTracking()
         }
         val hook = User32.INSTANCE.SetWinEventHook(
             EVENT_SYSTEM_FOREGROUND,
@@ -53,14 +75,15 @@ class GameDetector {
             EVENT_OBJECT_DESTROY,
             null,
             allExeStartStopEventProc,
-            0, 0,
+            0,
+            0,
             WIN_EVENT_OUT_OF_CONTEXT
         )
         Runtime.getRuntime().addShutdownHook(Thread {
             User32.INSTANCE.UnhookWinEvent(hook)
             User32.INSTANCE.UnhookWinEvent(hHook)
         })
-        ifGameIsRunningAlreadySetState()
+        initializeOnAppStart()
 
         val msg = WinUser.MSG()
         while (User32.INSTANCE.GetMessage(msg, null, 0, 0) != 0) {
@@ -69,30 +92,104 @@ class GameDetector {
         }
     }
 
-    private fun ifGameIsRunningAlreadySetState() {
+    fun initializeOnAppStart() {
+        refreshWindowTracking()
+        val isRunning = isGameProcessRunning()
+        if (!isRunning || _currentGameBounds.value == null) {
+            _currentGameState.value = GameStatus.NOT_RUNNING
+            return
+        }
+        val events = try {
+            fetchEvents(0)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        _currentGameState.value = if (events.isNotEmpty()) GameStatus.IN_PROGRESS else GameStatus.LOADING
+    }
+
+    suspend fun monitorGameLifecycle() {
+        while (true) {
+            refreshWindowTracking()
+            val running = isGameProcessRunning()
+            val hasWindow = _currentGameBounds.value != null
+
+            when {
+                !running || !hasWindow -> {
+                    if (_currentGameState.value != GameStatus.NOT_RUNNING) {
+                        _currentGameState.value = GameStatus.NOT_RUNNING
+                    }
+                }
+
+                _currentGameState.value == GameStatus.NOT_RUNNING ||
+                        _currentGameState.value == GameStatus.FALSE_START ||
+                        _currentGameState.value == GameStatus.GAME_OVER -> {
+                    val events = fetchEvents(0)
+                    _currentGameState.value = if (events.isNotEmpty()) GameStatus.IN_PROGRESS else GameStatus.LOADING
+                }
+            }
+
+            delay(1000)
+        }
+    }
+
+    private fun refreshWindowTracking() {
+        val tracked = findPrimaryGameWindow()
+        _currentGameBounds.value = tracked?.bounds
+        _currentGameWindowId.value = tracked?.handleId
+        val foregroundIsGame = exeNameFromHwnd(User32.INSTANCE.GetForegroundWindow()) == GAME_EXECUTABLE_NAME
+        _isGameForeground.value = foregroundIsGame || tracked != null
+    }
+
+    private fun isGameProcessRunning(): Boolean {
         val list = mutableListOf<String>()
         val kernel = Kernel32.INSTANCE
 
-        val TH32CS_SNAPPROCESS = DWORD(Tlhelp32.TH32CS_SNAPPROCESS.toLong())
-        val hSnapshot: WinNT.HANDLE = kernel.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, WinDef.DWORD(0))
-        if (WinBase.INVALID_HANDLE_VALUE(hSnapshot)) {
-            return
+        val snapshotFlag = DWORD(Tlhelp32.TH32CS_SNAPPROCESS.toLong())
+        val snapshot = kernel.CreateToolhelp32Snapshot(snapshotFlag, WinDef.DWORD(0))
+        if (LocalWinBase.INVALID_HANDLE_VALUE(snapshot)) {
+            return false
         }
         try {
-            val pe32 = Tlhelp32.PROCESSENTRY32()
-            pe32.dwSize = DWORD(pe32.size().toLong())
+            val processEntry = Tlhelp32.PROCESSENTRY32()
+            processEntry.dwSize = DWORD(processEntry.size().toLong())
 
-            if (!kernel.Process32First(hSnapshot, pe32)) {
-                return
+            if (!kernel.Process32First(snapshot, processEntry)) {
+                return false
             }
             do {
-                val exe = charArrayToString(pe32.szExeFile)
-                list.add(exe)
-            } while (kernel.Process32Next(hSnapshot, pe32))
+                list.add(charArrayToString(processEntry.szExeFile))
+            } while (kernel.Process32Next(snapshot, processEntry))
         } finally {
-            kernel.CloseHandle(hSnapshot)
+            kernel.CloseHandle(snapshot)
         }
-        if (list.contains(GAME_EXECUTABLE_NAME)) _currentGameState.value = GameStatus.IN_PROGRESS
+        return list.contains(GAME_EXECUTABLE_NAME)
+    }
+
+    private fun findPrimaryGameWindow(): TrackedGameWindow? {
+        var bestWindow: TrackedGameWindow? = null
+        User32.INSTANCE.EnumWindows({ hwnd, _ ->
+            if (!User32.INSTANCE.IsWindowVisible(hwnd)) {
+                return@EnumWindows true
+            }
+            if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) {
+                return@EnumWindows true
+            }
+            val rect = RECT()
+            if (!User32.INSTANCE.GetWindowRect(hwnd, rect)) {
+                return@EnumWindows true
+            }
+            val bounds = Rectangle(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
+            if (bounds.width <= 0 || bounds.height <= 0) {
+                return@EnumWindows true
+            }
+            val handleId = hwnd.pointer?.let(Pointer::nativeValue) ?: return@EnumWindows true
+            val candidate = TrackedGameWindow(handleId = handleId, bounds = bounds)
+            if (bestWindow == null || bounds.width * bounds.height > bestWindow!!.bounds.width * bestWindow!!.bounds.height) {
+                bestWindow = candidate
+            }
+            true
+        }, null)
+        return bestWindow
     }
 
     private fun charArrayToString(chars: CharArray): String {
@@ -104,21 +201,22 @@ class GameDetector {
         return sb.toString()
     }
 
-
     private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
         if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
         when (event.toInt()) {
-            EVENT_OBJECT_CREATE -> when (_currentGameState.value) {
-                GameStatus.NOT_RUNNING -> _currentGameState.value = GameStatus.FALSE_START
-                GameStatus.FALSE_START -> _currentGameState.value = GameStatus.LOADING
-                else -> {}
+            EVENT_OBJECT_CREATE -> {
+                if (_currentGameState.value == GameStatus.NOT_RUNNING) {
+                    _currentGameState.value = GameStatus.LOADING
+                }
             }
 
-            EVENT_OBJECT_DESTROY -> when (_currentGameState.value) {
-                GameStatus.IN_PROGRESS -> _currentGameState.value = GameStatus.NOT_RUNNING
-                else -> {}
+            EVENT_OBJECT_DESTROY -> {
+                if (_currentGameWindowId.value != null && _currentGameWindowId.value == hwnd?.pointer?.let(Pointer::nativeValue)) {
+                    _currentGameState.value = GameStatus.NOT_RUNNING
+                }
             }
         }
+        refreshWindowTracking()
     }
 
     private fun exeNameFromHwnd(hwnd: HWND?): String {
@@ -162,53 +260,40 @@ class GameDetector {
 
     suspend fun startEventsFlow() {
         var lastEventId = 0
-        while (currentGameState.value == GameStatus.LOADING || currentGameState.value == GameStatus.IN_PROGRESS) {
-            //println("Fetching events with lastEventId: $lastEventId")
+        while (_currentGameState.value == GameStatus.LOADING || _currentGameState.value == GameStatus.IN_PROGRESS) {
+            refreshWindowTracking()
             val events = fetchEvents(lastEventId)
-            //println("Fetched ${events.size} events")
-            when (currentGameState.value) {
+            when (_currentGameState.value) {
                 GameStatus.IN_PROGRESS -> if (lookForGameOver(events)) _currentGameState.value = GameStatus.GAME_OVER
                 else -> if (lookForGameStart(events)) _currentGameState.value = GameStatus.IN_PROGRESS
             }
             lastEventId = events.lastOrNull()?.eventId ?: lastEventId
             delay(1000)
         }
-        println("Events flow stopped")
     }
 
-    private fun lookForGameStart(events: List<LiveGameEvent>): Boolean {
-        //println("Looking for game start:")
-        return events.any { it.eventName == "GameStart" }
-    }
+    private fun lookForGameStart(events: List<LiveGameEvent>): Boolean = events.any { it.eventName == "GameStart" }
 
-    private fun lookForGameOver(events: List<LiveGameEvent>): Boolean {
-        //println("Looking for game over:")
-        return events.any { it.eventName == "GameEnd" }
-    }
-
+    private fun lookForGameOver(events: List<LiveGameEvent>): Boolean = events.any { it.eventName == "GameEnd" }
 
     private fun fetchEvents(lastEventId: Int): List<LiveGameEvent> {
         try {
             client.newCall(("$eventDataURL?eventID=$lastEventId").toRequest()).execute().use { response ->
                 val body = response.body.string()
-                //println("Fetched events response: $body")
                 val bodyObject = Json.parseToJsonElement(body).jsonObject
                 val eventsArray = bodyObject["Events"]?.jsonArray ?: return emptyList()
                 return eventsArray.mapNotNull { eventElement ->
                     val eventObject = eventElement.jsonObject
                     val eventId = eventObject["EventID"]?.jsonPrimitive?.int ?: return@mapNotNull null
                     val eventName = eventObject["EventName"]?.jsonPrimitive?.content ?: "Unknown"
-                    //println(eventName)
                     val eventTime = eventObject["EventTime"]?.jsonPrimitive?.floatOrNull
                     LiveGameEvent(eventId, eventName, eventTime)
                 }
             }
-        } catch (e: Exception) {
-            println("Failed to fetch events: ${e.message}")
+        } catch (_: Exception) {
             return emptyList()
         }
     }
-
 }
 
 enum class GameStatus {
@@ -219,11 +304,10 @@ enum class GameStatus {
     GAME_OVER
 }
 
-object WinBase {
+object LocalWinBase {
     fun INVALID_HANDLE_VALUE(handle: WinNT.HANDLE?): Boolean {
         if (handle == null) return true
         val pointer: Pointer = handle.pointer ?: return true
-        // INVALID_HANDLE_VALUE is (HANDLE) -1, which is pointer value of -1
         return Pointer.nativeValue(pointer) == -1L
     }
 }
