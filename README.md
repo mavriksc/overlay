@@ -3,8 +3,6 @@
 
 Windows desktop overlay for League of Legends that adds simple training cues on top of the game.
 
-![Overlay settings screenshot](./img/settings.png)
-
 ## What it does
 
 - Detects whether League is running and in the foreground
@@ -14,6 +12,7 @@ Windows desktop overlay for League of Legends that adds simple training cues on 
 - minimap look reminders
 - dodge-direction prompts
 
+![Overlay settings screenshot](./img/settings.png)
 ## Stack
 
 - Kotlin
