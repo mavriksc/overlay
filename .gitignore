@@ -1,5 +1,10 @@
 .gradle
-build/
+build/*
+!build/jpackage/
+build/jpackage/*
+!build/jpackage/overlay/
+build/jpackage/overlay/*
+!build/jpackage/overlay/overlay.exe
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
@@ -46,3 +51,4 @@ bin/
 /api_docs/
 /data/
 /.idea/
+/logs/

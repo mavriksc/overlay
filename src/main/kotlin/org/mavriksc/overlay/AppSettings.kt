@@ -26,7 +26,9 @@ data class FeatureSettings(
     val spellPacingEnabled: Boolean = true,
     val minimapReminderEnabled: Boolean = true,
     val dodgeDirectionEnabled: Boolean = true,
-    val showOnlyWhileForeground: Boolean = true
+    val showOnlyWhileForeground: Boolean = true,
+    val overrideExeNameEnabled: Boolean = false,
+    val overrideExeName: String = ""
 )
 
 @Serializable
@@ -64,6 +66,7 @@ enum class PanelDensity {
 
 private const val DEFAULT_SPELL_HORIZONTAL_OFFSET_PX = -14
 private const val DEFAULT_SPELL_BOTTOM_OFFSET_PX = -10
+const val DEFAULT_GAME_EXECUTABLE_NAME = "League of Legends.exe"
 
 class AppSettingsStore(
     private val settingsPath: Path = defaultSettingsPath()
@@ -152,3 +155,10 @@ fun AppSettings.toOverlayConfig(persisted: PersistedGameSettings?): OverlayConfi
         spellSpacingScaleAdjust = calibration.spellSpacingScaleAdjustPercent / 100.0
     )
 }
+
+fun FeatureSettings.effectiveGameExecutableName(): String =
+    if (overrideExeNameEnabled) {
+        overrideExeName.trim().ifBlank { DEFAULT_GAME_EXECUTABLE_NAME }
+    } else {
+        DEFAULT_GAME_EXECUTABLE_NAME
+    }

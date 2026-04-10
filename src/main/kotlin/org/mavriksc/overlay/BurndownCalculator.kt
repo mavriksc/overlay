@@ -8,6 +8,7 @@ import org.mavriksc.overlay.lolservice.ActivePlayerData
 import org.mavriksc.overlay.lolservice.ChampDataService
 import org.mavriksc.overlay.lolservice.Champion
 import java.awt.Color
+import java.util.logging.Logger
 import javax.swing.SwingUtilities
 
 //how many casts of a spell before you can't cast a full rotation
@@ -16,6 +17,7 @@ import javax.swing.SwingUtilities
 //green > 2
 
 class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlayerData?>) {
+    private val logger = Logger.getLogger(BurndownCalculator::class.java.name)
     private val champDataService: ChampDataService = ChampDataService()
     private val scope = CoroutineScope(Dispatchers.IO)
     private var champion: Champion? = null
@@ -40,12 +42,12 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
     private fun gameStartStuff(data: ActivePlayerData) {
         champion = champDataService.getChampion(data.championName)
         // get initial values
-        println("game start stuff: ${champion?.name}")
+        logger.info("Loaded champion data for ${champion?.name}")
         everyUpdate(data)
     }
 
     private fun everyUpdate(data: ActivePlayerData) {
-        println("every update: $data")
+        logger.fine("Received active player update for ${data.championName}")
         val level = data.spellLevels.map { it.value }.sum()
         if (level != lastChampionLevel) {
             spellCosts = calculateSpellCosts(data)
@@ -75,7 +77,7 @@ class BurndownCalculator(overlay: GameOverlay, activePlayerData: Flow<ActivePlay
 
     private fun calculateSpellCosts(data: ActivePlayerData) =
         data.spellLevels.map { (spell, level) ->
-            println("spell: $spell, level: $level")
+            logger.fine("Calculating cost for spell $spell at level $level")
             if (level == 0) 0.0f else
                 champion!!.abilities.first { it.name == spell }.cost!![level - 1]
         }

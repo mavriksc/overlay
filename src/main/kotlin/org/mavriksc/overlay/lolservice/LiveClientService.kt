@@ -9,8 +9,11 @@ import org.mavriksc.overlay.getOkHttpClientForGameClient
 import org.mavriksc.overlay.toRequest
 import java.io.Closeable
 import java.util.concurrent.TimeUnit
+import java.util.logging.Level
+import java.util.logging.Logger
 
-class LiveClientService : Closeable {
+open class LiveClientService(private val autoStartPolling: Boolean = true) : Closeable {
+    private val logger = Logger.getLogger(LiveClientService::class.java.name)
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
     private val activePlayerURL = "https://localhost:2999/liveclientdata/activeplayer"
     private val abilityKeys = listOf("Q", "W", "E", "R")
@@ -19,10 +22,12 @@ class LiveClientService : Closeable {
     val activePlayerData: StateFlow<ActivePlayerData?> = _activePlayerData.asStateFlow()
 
     init {
-        pollingJob = CoroutineScope(Dispatchers.IO).launch {
-            while (isActive) {
-                fetchActivePlayer()
-                delay(1_000)
+        if (autoStartPolling) {
+            pollingJob = CoroutineScope(Dispatchers.IO).launch {
+                while (isActive) {
+                    fetchActivePlayer()
+                    delay(1_000)
+                }
             }
         }
     }
@@ -40,7 +45,7 @@ class LiveClientService : Closeable {
                 _activePlayerData.value = stats
             }
         } catch (e: Exception) {
-            println("Failed to fetch active player data: ${e.message}")
+            logger.log(Level.WARNING, "Failed to fetch active player data", e)
         }
     }
 

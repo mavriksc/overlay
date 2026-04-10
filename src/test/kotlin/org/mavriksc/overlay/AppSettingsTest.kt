@@ -76,4 +76,20 @@ class AppSettingsTest {
         assertEquals(PanelDensity.COMFY, reset.appearance.panelDensity)
         assertEquals(CalibrationSettings(), reset.calibration)
     }
+
+    @Test
+    fun `effective game executable name falls back to default unless enabled with value`() {
+        assertEquals(
+            DEFAULT_GAME_EXECUTABLE_NAME,
+            FeatureSettings().effectiveGameExecutableName()
+        )
+        assertEquals(
+            DEFAULT_GAME_EXECUTABLE_NAME,
+            FeatureSettings(overrideExeNameEnabled = true, overrideExeName = "   ").effectiveGameExecutableName()
+        )
+        assertEquals(
+            "GameClient.exe",
+            FeatureSettings(overrideExeNameEnabled = true, overrideExeName = "  GameClient.exe ").effectiveGameExecutableName()
+        )
+    }
 }

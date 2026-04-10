@@ -17,12 +17,12 @@ class OverlayLayoutMetricsTest {
 
         assertEquals(352, layout.mapRect.width)
         assertEquals(352, layout.mapRect.height)
-        assertEquals(2208, layout.mapRect.x)
+        assertEquals(2188, layout.mapRect.x)
         assertEquals(1068, layout.mapRect.y)
 
         val rCenter = layout.spellTopLefts.last().x + layout.spellSize.first / 2.0
-        assertEquals(1266.0, rCenter)
-        assertEquals(1301, layout.spellTopLefts.last().x)
+        assertEquals(1280.0, rCenter)
+        assertEquals(1270, layout.spellTopLefts.last().x)
     }
 
     @Test
@@ -35,11 +35,11 @@ class OverlayLayoutMetricsTest {
         )
 
         assertTrue(layout.mapRect.width < 352)
-        assertEquals(801, layout.mapRect.x)
+        assertEquals(1641, layout.mapRect.x)
         assertEquals(801, layout.mapRect.y)
         assertTrue(layout.spellSize.first < 20)
         val rCenter = layout.spellTopLefts.last().x + layout.spellSize.first / 2.0
-        assertEquals(946.0, rCenter)
+        assertEquals(960.5, rCenter)
     }
 
     @Test

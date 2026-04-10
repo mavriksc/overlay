@@ -1,6 +1,7 @@
 package org.mavriksc.overlay
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,16 +9,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
@@ -26,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,9 +44,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowScope
+import org.jetbrains.compose.resources.painterResource
+import org.mavriksc.overlay.generated.resources.Res
+import org.mavriksc.overlay.generated.resources.icon
 import java.awt.Rectangle
 import kotlin.math.roundToInt
 
@@ -56,6 +61,10 @@ private val TextPrimary = Color(0xFFF3F7FB)
 private val TextSecondary = Color(0xFF93A2B6)
 private val Danger = Color(0xFFFF6B6B)
 private val WindowBg = Color(0xE610161D)
+private val TitleBarControlWidth = 42.dp
+private val TitleBarControlHeight = 34.dp
+private val TitleBarControlCornerRadius = 9.dp
+private const val TitleBarMinimizeVerticalFraction = 0.75f
 
 @Composable
 fun WindowScope.SettingsWindow(
@@ -108,18 +117,14 @@ fun WindowScope.SettingsWindow(
                         .padding(start = outerPadding, end = outerPadding, bottom = outerPadding)
                         .verticalScroll(scrollState)
                 ) {
-                    Text("Overlay Control", color = TextPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Compose settings panel with live calibration controls, previews, and runtime diagnostics.",
-                        color = TextSecondary,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(Modifier.height(if (compact) 18.dp else 24.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(sectionGap), modifier = Modifier.fillMaxWidth()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(sectionGap), modifier = Modifier.weight(1f)) {
-                            SectionCard("Features", "Runtime visibility and overlay systems") {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(sectionGap),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            SectionCard("Features", modifier = Modifier.fillMaxHeight()) {
                                 OverlayToggle(
                                     label = "Spell pacing",
                                     description = "Bottom-center pacing bars for rotation pressure.",
@@ -145,8 +150,9 @@ fun WindowScope.SettingsWindow(
                                     onCheckedChange = { controller.updateFeatures { f -> f.copy(showOnlyWhileForeground = it) } }
                                 )
                             }
-
-                            SectionCard("Timing", "Tune reminder cadence and preview responsiveness") {
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            SectionCard("Timing", modifier = Modifier.fillMaxHeight()) {
                                 IntSliderRow(
                                     label = "Dodge interval",
                                     value = appSettings.timing.dodgeCueIntervalMs,
@@ -172,8 +178,19 @@ fun WindowScope.SettingsWindow(
                                     onValueChange = { controller.updateTiming { t -> t.copy(minimapFlashDurationMs = it) } }
                                 )
                             }
+                        }
+                    }
 
-                            SectionCard("Appearance", "Color, density, and panel feel") {
+                    Spacer(Modifier.height(sectionGap))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(sectionGap),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            SectionCard("Appearance", modifier = Modifier.fillMaxHeight()) {
                                 Text("Map flash", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
                                 ColorPaletteRow(
                                     selectedArgb = appSettings.appearance.mapFlashColorArgb,
@@ -198,9 +215,52 @@ fun WindowScope.SettingsWindow(
                                 )
                             }
                         }
+                        Column(modifier = Modifier.weight(1f)) {
+                            SectionCard(
+                                "Live Preview",
+                                modifier = Modifier.fillMaxHeight()
+                            ) {
+                                PreviewCard(
+                                    settings = appSettings,
+                                    persistedSettings = persistedSettings,
+                                    gameBounds = gameBounds
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    ActionButton("Flash Minimap", onClick = controller::previewMapFlash)
+                                    ActionButton("Flip Dodge Cue", onClick = controller::previewDodgeCue)
+                                }
+                            }
+                        }
+                    }
 
+                    Spacer(Modifier.height(sectionGap))
+
+                    SectionCard(
+                        "Game Name String",
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OverlayToggle(
+                            label = "Override game exe name",
+                            description = "Use a custom game-client executable filename when detection should target something other than the default.",
+                            checked = appSettings.features.overrideExeNameEnabled,
+                            onCheckedChange = { controller.updateFeatures { f -> f.copy(overrideExeNameEnabled = it) } }
+                        )
+                        LabeledTextField(
+                            label = "Game client exe filename",
+                            description = "Enter the actual in-game client executable filename only, not the League or Riot Games launcher.",
+                            value = appSettings.features.overrideExeName,
+                            enabled = appSettings.features.overrideExeNameEnabled,
+                            placeholder = DEFAULT_GAME_EXECUTABLE_NAME,
+                            onValueChange = { controller.updateFeatures { f -> f.copy(overrideExeName = it) } }
+                        )
+                    }
+
+                    Spacer(Modifier.height(sectionGap))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(sectionGap), modifier = Modifier.fillMaxWidth()) {
                         Column(verticalArrangement = Arrangement.spacedBy(sectionGap), modifier = Modifier.weight(1f)) {
-                            SectionCard("Calibration", "Fine trim values layered on top of detected League settings") {
+                            SectionCard("Calibration") {
                                 IntSliderRow(
                                     label = "Spell horizontal offset",
                                     value = appSettings.calibration.spellHorizontalOffsetAdjustPx,
@@ -279,21 +339,10 @@ fun WindowScope.SettingsWindow(
                                     ActionButton("Reset All", onClick = controller::resetAllSettings, background = Danger)
                                 }
                             }
+                        }
 
-                            SectionCard("Live Preview", "Preview card uses current settings and detected game bounds when available") {
-                                PreviewCard(
-                                    settings = appSettings,
-                                    persistedSettings = persistedSettings,
-                                    gameBounds = gameBounds
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    ActionButton("Flash Minimap", onClick = controller::previewMapFlash)
-                                    ActionButton("Flip Dodge Cue", onClick = controller::previewDodgeCue)
-                                }
-                            }
-
-                            SectionCard("Diagnostics", "Read-only values from runtime detection and League persisted settings") {
+                        Column(verticalArrangement = Arrangement.spacedBy(sectionGap), modifier = Modifier.weight(1f)) {
+                            SectionCard("Diagnostics") {
                                 DiagnosticRow("Game state", gameState.name)
                                 DiagnosticRow("League in foreground", if (isForeground) "Yes" else "No")
                                 DiagnosticRow("Detected bounds", gameBounds?.let { "${it.width}x${it.height} @ ${it.x}, ${it.y}" } ?: "Not detected")
@@ -320,6 +369,8 @@ private fun TitleBar(
     onToggleMaximize: () -> Unit,
     onQuit: () -> Unit
 ) {
+    val titleIcon = painterResource(Res.drawable.icon)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -327,14 +378,21 @@ private fun TitleBar(
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Overlay Settings", color = TextPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Image(
+                painter = titleIcon,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp)
+            )
             Text(
-                "Custom shell, tray-aware minimize, replay-tolerant runtime controls.",
-                color = TextSecondary,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                "LOL Overlay Settings",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -350,51 +408,110 @@ private fun TitleBarButton(label: String, onClick: () -> Unit, background: Color
     val normalizedLabel = label.trim()
     val isMinimize = normalizedLabel == "-" || normalizedLabel == "—" || normalizedLabel == "â€”"
     val isQuit = background == Danger
-    val buttonWidth = when {
-        isMinimize -> 34.dp
-        else -> 42.dp
+    val isRestore = normalizedLabel == "\u2750"
+    val control = when {
+        isMinimize -> TitleBarControl.Minimize
+        isQuit -> TitleBarControl.Close
+        isRestore -> TitleBarControl.Restore
+        else -> TitleBarControl.Maximize
     }
-    val buttonHeight = when {
-        isMinimize -> 28.dp
-        else -> 34.dp
-    }
-    val cornerRadius = when {
-        isMinimize -> 8.dp
-        else -> 9.dp
-    }
-    val textStyle = when {
-        isMinimize -> MaterialTheme.typography.titleMedium
-        else -> MaterialTheme.typography.titleLarge
-    }
-    val textOffsetY = when {
-        isMinimize -> 0.dp
-        isQuit -> (-1).dp
-        else -> (-2).dp
-    }
-
     Box(
         modifier = Modifier
-            .size(width = buttonWidth, height = buttonHeight)
-            .clip(RoundedCornerShape(cornerRadius))
+            .size(width = TitleBarControlWidth, height = TitleBarControlHeight)
+            .clip(RoundedCornerShape(TitleBarControlCornerRadius))
             .background(background)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            label,
-            color = TextPrimary,
-            style = textStyle,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.offset(y = textOffsetY)
-        )
+        Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 3.dp)) {
+            val strokeWidth = size.minDimension * 0.10f
+            val strokeInset = strokeWidth / 2f
+            val horizontalInset = size.width * 0.16f
+            val verticalInset = size.height * 0.16f
+
+            when (control) {
+                TitleBarControl.Minimize -> {
+                    val y = size.height * TitleBarMinimizeVerticalFraction
+                    drawLine(
+                        color = TextPrimary,
+                        start = Offset(horizontalInset, y),
+                        end = Offset(size.width - horizontalInset, y),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                TitleBarControl.Maximize -> {
+                    drawRect(
+                        color = TextPrimary,
+                        topLeft = Offset(horizontalInset + strokeInset, verticalInset + strokeInset),
+                        size = Size(
+                            width = size.width - (horizontalInset * 2f) - strokeWidth,
+                            height = size.height - (verticalInset * 2f) - strokeWidth
+                        ),
+                        style = Stroke(width = strokeWidth)
+                    )
+                }
+
+                TitleBarControl.Restore -> {
+                    val boxWidth = size.width * 0.50f
+                    val boxHeight = size.height * 0.48f
+                    val backTopLeft = Offset(size.width * 0.34f, size.height * 0.12f)
+                    val frontTopLeft = Offset(size.width * 0.18f, size.height * 0.32f)
+
+                    drawRect(
+                        color = TextPrimary,
+                        topLeft = backTopLeft + Offset(strokeInset, strokeInset),
+                        size = Size(boxWidth - strokeWidth, boxHeight - strokeWidth),
+                        style = Stroke(width = strokeWidth)
+                    )
+                    drawRect(
+                        color = TextPrimary,
+                        topLeft = frontTopLeft + Offset(strokeInset, strokeInset),
+                        size = Size(boxWidth - strokeWidth, boxHeight - strokeWidth),
+                        style = Stroke(width = strokeWidth)
+                    )
+                }
+
+                TitleBarControl.Close -> {
+                    val xInset = size.width * 0.18f
+                    val yInset = size.height * 0.18f
+                    drawLine(
+                        color = TextPrimary,
+                        start = Offset(xInset, yInset),
+                        end = Offset(size.width - xInset, size.height - yInset),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = TextPrimary,
+                        start = Offset(size.width - xInset, yInset),
+                        end = Offset(xInset, size.height - yInset),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+        }
     }
 }
 
+private enum class TitleBarControl {
+    Minimize,
+    Maximize,
+    Restore,
+    Close
+}
+
 @Composable
-private fun SectionCard(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
+private fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Column(
-        modifier = Modifier
-            .widthIn(min = 420.dp, max = 560.dp)
+        modifier = modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(CardBg)
             .border(1.dp, CardBorder, RoundedCornerShape(20.dp))
@@ -402,8 +519,6 @@ private fun SectionCard(title: String, subtitle: String, content: @Composable Co
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-        Text(subtitle, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.height(2.dp))
         content()
     }
 }
@@ -486,6 +601,54 @@ private fun IntSliderRow(
                 activeTrackColor = Accent,
                 inactiveTrackColor = Color(0xFF243344)
             )
+        )
+    }
+}
+
+@Composable
+private fun LabeledTextField(
+    label: String,
+    description: String,
+    value: String,
+    enabled: Boolean,
+    placeholder: String,
+    onValueChange: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(PanelBg)
+            .padding(14.dp)
+    ) {
+        Text(label, color = TextPrimary, style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(4.dp))
+        Text(description, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(10.dp))
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(placeholder, color = TextSecondary)
+            },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color(0xFF0F151C),
+                unfocusedContainerColor = Color(0xFF0F151C),
+                disabledContainerColor = Color(0xFF0B1016),
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                disabledTextColor = TextSecondary,
+                focusedIndicatorColor = Accent,
+                unfocusedIndicatorColor = CardBorder,
+                disabledIndicatorColor = CardBorder,
+                cursorColor = Accent,
+                focusedPlaceholderColor = TextSecondary,
+                unfocusedPlaceholderColor = TextSecondary,
+                disabledPlaceholderColor = TextSecondary
+            ),
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

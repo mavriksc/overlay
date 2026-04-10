@@ -10,6 +10,9 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import org.jetbrains.compose.resources.painterResource
+import org.mavriksc.overlay.generated.resources.Res
+import org.mavriksc.overlay.generated.resources.icon
 import java.awt.MenuItem
 import java.awt.PopupMenu
 import java.awt.SystemTray
@@ -17,6 +20,7 @@ import java.awt.TrayIcon
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.imageio.ImageIO
+import java.util.logging.Logger
 
 class Application {
     fun start() = application {
@@ -79,9 +83,9 @@ class Application {
                 controller.close()
                 exitApplication()
             },
-            title = "Overlay Settings",
+            title = "LOL Overlay Settings",
             state = windowState,
-            icon = androidx.compose.ui.res.painterResource("icon.png"),
+            icon = painterResource(Res.drawable.icon),
             undecorated = true,
             transparent = true,
             visible = settingsVisible
@@ -112,5 +116,7 @@ class Application {
 }
 
 fun main() {
+    AppLogging.initialize()
+    Logger.getLogger(Application::class.java.name).info("Starting Overlay application")
     Application().start()
 }

@@ -21,6 +21,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardWatchEventKinds
+import java.util.logging.Logger
 
 data class PersistedGameSettings(
     val mapOnLeft: Boolean,
@@ -33,6 +34,8 @@ class PersistedSettingsReader(
     private val settingsPath: Path? = null,
     private val installRoot: Path? = null
 ) {
+    private val logger = Logger.getLogger(PersistedSettingsReader::class.java.name)
+
     fun resolveSettingsPath(): Path? {
         settingsPath?.let { if (Files.isRegularFile(it)) return it }
         val roots = mutableListOf<Path>()
@@ -108,7 +111,7 @@ class PersistedSettingsReader(
                 }
                 if (hasRelevantChange) {
                     val updated = read()
-                    println("updated Settings $updated")
+                    logger.info("Persisted settings updated: $updated")
                     if (updated != null) {
                         trySend(updated)
                     }
@@ -259,5 +262,7 @@ class PersistedSettingsReader(
 }
 
 fun main() {
-    println(PersistedSettingsReader().read())
+    AppLogging.initialize()
+    Logger.getLogger(PersistedSettingsReader::class.java.name)
+        .info("Current persisted settings: ${PersistedSettingsReader().read()}")
 }

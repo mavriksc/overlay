@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -31,29 +34,47 @@ data class TrackedGameWindow(
     val bounds: Rectangle
 )
 
-class GameDetector {
+interface GameRuntimeDetector {
+    val isGameForeground: StateFlow<Boolean>
+    val currentGameState: StateFlow<GameStatus>
+    val currentGameBounds: StateFlow<Rectangle?>
+    val currentGameWindowId: StateFlow<Long?>
+    val currentGameSessionKind: StateFlow<GameSessionKind>
+
+    fun detectGame()
+    fun initializeOnAppStart()
+    fun setTrackedExecutableName(executableName: String)
+    suspend fun monitorGameLifecycle()
+    suspend fun startEventsFlow()
+}
+
+open class GameDetector : GameRuntimeDetector {
     private val EVENT_SYSTEM_FOREGROUND = 0x0003
     private val WIN_EVENT_OUT_OF_CONTEXT = 0x0000
     private val SKIP_OWN_PROCESS = 0x0002
     private val EVENT_OBJECT_CREATE = 0x8000
     private val EVENT_OBJECT_DESTROY = 0x8001
-    private val GAME_EXECUTABLE_NAME = "League of Legends.exe"
+    @Volatile
+    private var gameExecutableName = DEFAULT_GAME_EXECUTABLE_NAME
     private val client = getOkHttpClientForGameClient(5, TimeUnit.SECONDS)
-    private val eventDataURL = "https://localhost:2999/liveclientdata/eventdata"
+    private val allGameDataURL = "https://localhost:2999/liveclientdata/allgamedata"
 
     private val _isGameForeground = MutableStateFlow(false)
-    val isGameForeground: StateFlow<Boolean> = _isGameForeground.asStateFlow()
+    override val isGameForeground: StateFlow<Boolean> = _isGameForeground.asStateFlow()
 
     private val _currentGameState = MutableStateFlow(GameStatus.NOT_RUNNING)
-    val currentGameState: StateFlow<GameStatus> = _currentGameState.asStateFlow()
+    override val currentGameState: StateFlow<GameStatus> = _currentGameState.asStateFlow()
 
     private val _currentGameBounds = MutableStateFlow<Rectangle?>(null)
-    val currentGameBounds: StateFlow<Rectangle?> = _currentGameBounds.asStateFlow()
+    override val currentGameBounds: StateFlow<Rectangle?> = _currentGameBounds.asStateFlow()
 
     private val _currentGameWindowId = MutableStateFlow<Long?>(null)
-    val currentGameWindowId: StateFlow<Long?> = _currentGameWindowId.asStateFlow()
+    override val currentGameWindowId: StateFlow<Long?> = _currentGameWindowId.asStateFlow()
 
-    fun detectGame() {
+    private val _currentGameSessionKind = MutableStateFlow(GameSessionKind.UNKNOWN)
+    override val currentGameSessionKind: StateFlow<GameSessionKind> = _currentGameSessionKind.asStateFlow()
+
+    override fun detectGame() {
         val foregroundEventProc = WinEventProc { _, _, _, _, _, _, _ ->
             refreshWindowTracking()
         }
@@ -92,22 +113,25 @@ class GameDetector {
         }
     }
 
-    fun initializeOnAppStart() {
+    override fun initializeOnAppStart() {
         refreshWindowTracking()
         val isRunning = isGameProcessRunning()
         if (!isRunning || _currentGameBounds.value == null) {
             _currentGameState.value = GameStatus.NOT_RUNNING
+            _currentGameSessionKind.value = GameSessionKind.UNKNOWN
             return
         }
-        val events = try {
-            fetchEvents(0)
-        } catch (_: Exception) {
-            emptyList()
-        }
-        _currentGameState.value = if (events.isNotEmpty()) GameStatus.IN_PROGRESS else GameStatus.LOADING
+        val snapshot = fetchGameSnapshot()
+        _currentGameSessionKind.value = snapshot?.sessionKind ?: GameSessionKind.UNKNOWN
+        _currentGameState.value = if (snapshot?.events?.isNotEmpty() == true) GameStatus.IN_PROGRESS else GameStatus.LOADING
     }
 
-    suspend fun monitorGameLifecycle() {
+    override fun setTrackedExecutableName(executableName: String) {
+        gameExecutableName = executableName.trim().ifBlank { DEFAULT_GAME_EXECUTABLE_NAME }
+        refreshWindowTracking()
+    }
+
+    override suspend fun monitorGameLifecycle() {
         while (true) {
             refreshWindowTracking()
             val running = isGameProcessRunning()
@@ -118,13 +142,15 @@ class GameDetector {
                     if (_currentGameState.value != GameStatus.NOT_RUNNING) {
                         _currentGameState.value = GameStatus.NOT_RUNNING
                     }
+                    _currentGameSessionKind.value = GameSessionKind.UNKNOWN
                 }
 
                 _currentGameState.value == GameStatus.NOT_RUNNING ||
                         _currentGameState.value == GameStatus.FALSE_START ||
                         _currentGameState.value == GameStatus.GAME_OVER -> {
-                    val events = fetchEvents(0)
-                    _currentGameState.value = if (events.isNotEmpty()) GameStatus.IN_PROGRESS else GameStatus.LOADING
+                    val snapshot = fetchGameSnapshot()
+                    _currentGameSessionKind.value = snapshot?.sessionKind ?: GameSessionKind.UNKNOWN
+                    _currentGameState.value = if (snapshot?.events?.isNotEmpty() == true) GameStatus.IN_PROGRESS else GameStatus.LOADING
                 }
             }
 
@@ -136,7 +162,7 @@ class GameDetector {
         val tracked = findPrimaryGameWindow()
         _currentGameBounds.value = tracked?.bounds
         _currentGameWindowId.value = tracked?.handleId
-        val foregroundIsGame = exeNameFromHwnd(User32.INSTANCE.GetForegroundWindow()) == GAME_EXECUTABLE_NAME
+        val foregroundIsGame = exeNameFromHwnd(User32.INSTANCE.GetForegroundWindow()) == gameExecutableName
         _isGameForeground.value = foregroundIsGame || tracked != null
     }
 
@@ -162,7 +188,7 @@ class GameDetector {
         } finally {
             kernel.CloseHandle(snapshot)
         }
-        return list.contains(GAME_EXECUTABLE_NAME)
+        return list.contains(gameExecutableName)
     }
 
     private fun findPrimaryGameWindow(): TrackedGameWindow? {
@@ -171,7 +197,7 @@ class GameDetector {
             if (!User32.INSTANCE.IsWindowVisible(hwnd)) {
                 return@EnumWindows true
             }
-            if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) {
+            if (exeNameFromHwnd(hwnd) != gameExecutableName) {
                 return@EnumWindows true
             }
             val rect = RECT()
@@ -202,17 +228,19 @@ class GameDetector {
     }
 
     private fun processExeStartStopEvent(event: DWORD, hwnd: HWND?) {
-        if (exeNameFromHwnd(hwnd) != GAME_EXECUTABLE_NAME) return
+        if (exeNameFromHwnd(hwnd) != gameExecutableName) return
         when (event.toInt()) {
             EVENT_OBJECT_CREATE -> {
                 if (_currentGameState.value == GameStatus.NOT_RUNNING) {
                     _currentGameState.value = GameStatus.LOADING
+                    _currentGameSessionKind.value = GameSessionKind.UNKNOWN
                 }
             }
 
             EVENT_OBJECT_DESTROY -> {
                 if (_currentGameWindowId.value != null && _currentGameWindowId.value == hwnd?.pointer?.let(Pointer::nativeValue)) {
                     _currentGameState.value = GameStatus.NOT_RUNNING
+                    _currentGameSessionKind.value = GameSessionKind.UNKNOWN
                 }
             }
         }
@@ -258,11 +286,13 @@ class GameDetector {
         }
     }
 
-    suspend fun startEventsFlow() {
+    override suspend fun startEventsFlow() {
         var lastEventId = 0
         while (_currentGameState.value == GameStatus.LOADING || _currentGameState.value == GameStatus.IN_PROGRESS) {
             refreshWindowTracking()
-            val events = fetchEvents(lastEventId)
+            val snapshot = fetchGameSnapshot()
+            val events = snapshot?.events.orEmpty()
+            _currentGameSessionKind.value = snapshot?.sessionKind ?: GameSessionKind.UNKNOWN
             when (_currentGameState.value) {
                 GameStatus.IN_PROGRESS -> if (lookForGameOver(events)) _currentGameState.value = GameStatus.GAME_OVER
                 else -> if (lookForGameStart(events)) _currentGameState.value = GameStatus.IN_PROGRESS
@@ -276,23 +306,50 @@ class GameDetector {
 
     private fun lookForGameOver(events: List<LiveGameEvent>): Boolean = events.any { it.eventName == "GameEnd" }
 
-    private fun fetchEvents(lastEventId: Int): List<LiveGameEvent> {
+    private fun fetchGameSnapshot(): GameSnapshot? {
         try {
-            client.newCall(("$eventDataURL?eventID=$lastEventId").toRequest()).execute().use { response ->
+            client.newCall(allGameDataURL.toRequest()).execute().use { response ->
                 val body = response.body.string()
                 val bodyObject = Json.parseToJsonElement(body).jsonObject
-                val eventsArray = bodyObject["Events"]?.jsonArray ?: return emptyList()
-                return eventsArray.mapNotNull { eventElement ->
-                    val eventObject = eventElement.jsonObject
-                    val eventId = eventObject["EventID"]?.jsonPrimitive?.int ?: return@mapNotNull null
-                    val eventName = eventObject["EventName"]?.jsonPrimitive?.content ?: "Unknown"
-                    val eventTime = eventObject["EventTime"]?.jsonPrimitive?.floatOrNull
-                    LiveGameEvent(eventId, eventName, eventTime)
-                }
+                return parseGameSnapshot(bodyObject)
             }
         } catch (_: Exception) {
-            return emptyList()
+            return null
         }
+    }
+
+    internal fun parseGameSnapshot(bodyObject: JsonObject): GameSnapshot {
+        val activePlayer = bodyObject["activePlayer"] as? JsonObject
+        val activePlayerError = activePlayer
+            ?.get("error")
+            ?.jsonPrimitive
+            ?.contentOrNull
+
+        val sessionKind = when {
+            activePlayer == null -> GameSessionKind.UNKNOWN
+            activePlayerError != null -> GameSessionKind.SPECTATOR
+            else -> GameSessionKind.PLAYABLE
+        }
+
+        val eventsArray = bodyObject["events"]
+            ?.jsonObject
+            ?.get("Events")
+            ?.jsonArray
+            ?: emptyList<JsonElement>()
+
+        val events = eventsArray.mapNotNull { eventElement ->
+            val eventObject = eventElement.jsonObject
+            val eventId = eventObject["EventID"]?.jsonPrimitive?.int ?: return@mapNotNull null
+            val eventName = eventObject["EventName"]?.jsonPrimitive?.content ?: "Unknown"
+            val eventTime = eventObject["EventTime"]?.jsonPrimitive?.floatOrNull
+            LiveGameEvent(eventId, eventName, eventTime)
+        }
+
+        return GameSnapshot(
+            sessionKind = sessionKind,
+            events = events,
+            activePlayerError = activePlayerError
+        )
     }
 }
 
@@ -303,6 +360,18 @@ enum class GameStatus {
     IN_PROGRESS,
     GAME_OVER
 }
+
+enum class GameSessionKind {
+    UNKNOWN,
+    PLAYABLE,
+    SPECTATOR
+}
+
+internal data class GameSnapshot(
+    val sessionKind: GameSessionKind,
+    val events: List<LiveGameEvent>,
+    val activePlayerError: String?
+)
 
 object LocalWinBase {
     fun INVALID_HANDLE_VALUE(handle: WinNT.HANDLE?): Boolean {

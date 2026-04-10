@@ -1,6 +1,9 @@
 # overlay
+[just give me the exe](./build/jpackage/overlay/overlay.exe)
 
 Windows desktop overlay for League of Legends that adds simple training cues on top of the game.
+
+![Overlay settings screenshot](./img/settings.png)
 
 ## What it does
 
@@ -14,17 +17,19 @@ Windows desktop overlay for League of Legends that adds simple training cues on 
 ## Stack
 
 - Kotlin
-- Swing/AWT
+- Compose Desktop UI
 - JNA
 - Coroutines
 - Gradle
 
-## Requirements
+## Requirements To Build
+
+- Java 22
+
+## Requirements To Run
 
 - Windows
-- Java 22
 - League of Legends desktop client
-- Local access to the League Live Client API while a game is running
 
 ## Run locally
 
@@ -44,6 +49,12 @@ To build a local app image with `jpackage`:
 
 ```powershell
 .\gradlew jpackageImage
+```
+
+To build the distributable zip:
+
+```powershell
+.\gradlew jpackageZip
 ```
 
 ## Notes

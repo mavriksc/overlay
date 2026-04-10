@@ -5,6 +5,8 @@ import okhttp3.OkHttpClient
 import org.mavriksc.overlay.getTextFromFile
 import org.mavriksc.overlay.toRequest
 import org.mavriksc.overlay.writeToFile
+import org.mavriksc.overlay.AppLogging
+import java.util.logging.Logger
 
 
 class ChampDataService {
@@ -98,7 +100,9 @@ class ChampDataService {
 }
 
 fun main() {
+    AppLogging.initialize()
     val cdService = ChampDataService()
     val randChamp = cdService.getChampionList().random()
-    println(cdService.getChampion(randChamp))
+    Logger.getLogger(ChampDataService::class.java.name)
+        .info("Champion data for $randChamp: ${cdService.getChampion(randChamp)}")
 }

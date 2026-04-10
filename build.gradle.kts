@@ -25,6 +25,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0-RC")
     implementation(compose.desktop.currentOs)
+    implementation(compose.components.resources)
     implementation(compose.material3)
 
 }
@@ -64,18 +65,48 @@ tasks.register<Exec>("jpackageImage") {
 
     val jarFile = fatJar.get().archiveFile.get().asFile
     val outputDir = layout.buildDirectory.dir("jpackage")
+    val appImageDir = outputDir.map { it.dir("overlay") }
+    val packageReadme = outputDir.map { it.file("README.txt") }
 
     doFirst {
+        delete(appImageDir)
         commandLine(
             jpackageExe.get(),
             "--type", "app-image",
-            "--name", "Overlay",
+            "--name", "overlay",
             "--input", jarFile.parentFile.absolutePath,
             "--main-jar", jarFile.name,
             "--main-class", appMainClass,
+            "--java-options", "-Doverlay.log.dir=\$LOCALAPPDATA\\lol-overlay\\logs",
             "--dest", outputDir.get().asFile.absolutePath
         )
     }
+
+    doLast {
+        packageReadme.get().asFile.writeText(
+            """
+            Download the zip and decompress it somewhere on your computer.
+            Run overlay.exe.
+            Logs are here if there are problems:
+            %LOCALAPPDATA%\lol-overlay\logs
+            Report issues on GitHub:
+            https://github.com/mavriksc/overlay/issues
+            """.trimIndent()
+        )
+    }
+}
+
+tasks.register<Zip>("jpackageZip") {
+    dependsOn("jpackageImage")
+    group = "distribution"
+    description = "Builds a zip of the overlay app image for distribution."
+
+    val outputDir = layout.buildDirectory.dir("jpackage")
+    val appImageDir = outputDir.map { it.dir("overlay") }
+
+    from(appImageDir)
+    destinationDirectory.set(outputDir)
+    archiveFileName.set("overlay.zip")
 }
 
 tasks.test {

@@ -12,17 +12,21 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import org.mavriksc.overlay.lolservice.LiveClientService
 import java.awt.GraphicsEnvironment
+import java.awt.HeadlessException
 import java.awt.Rectangle
 
 class MainWindow(
-    private val settingsStore: AppSettingsStore = AppSettingsStore()
+    private val settingsStore: AppSettingsStore = AppSettingsStore(),
+    private val gameDetector: GameRuntimeDetector = GameDetector(),
+    private val overlayFactory: () -> GameOverlay = { GameOverlay() },
+    private val liveClientServiceFactory: () -> LiveClientService = { LiveClientService() }
 ) {
-    private val overlay = GameOverlay()
-    private val gameDetector = GameDetector()
+    private var overlay: GameOverlay? = null
     private val gameIsForeground = gameDetector.isGameForeground
     private val gameState = gameDetector.currentGameState
     private val gameBounds = gameDetector.currentGameBounds
     private val gameWindowId = gameDetector.currentGameWindowId
+    private val gameSessionKind = gameDetector.currentGameSessionKind
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentGameService: LiveClientService? = null
     private var burndownCalculator: BurndownCalculator? = null
@@ -36,12 +40,9 @@ class MainWindow(
     val currentGameState: StateFlow<GameStatus> = gameState
     val isGameForeground: StateFlow<Boolean> = gameIsForeground
 
-    private val defaultDisplayBounds: Rectangle =
-        GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
+    private val defaultDisplayBounds: Rectangle = safeDefaultDisplayBounds()
 
     init {
-        overlay.isVisible = false
-        overlay.updateWindowBounds(defaultDisplayBounds)
         applyRuntimeConfig()
         startRuntime()
     }
@@ -71,11 +72,11 @@ class MainWindow(
     }
 
     fun previewMapFlash() {
-        overlay.previewMapFlash()
+        overlay?.previewMapFlash()
     }
 
     fun previewDodgeCue() {
-        overlay.previewDodgeFlip()
+        overlay?.previewDodgeFlip()
     }
 
     fun close() {
@@ -84,8 +85,7 @@ class MainWindow(
         currentGameService = null
         eventsJob?.cancel()
         eventsJob = null
-        overlay.isVisible = false
-        overlay.dispose()
+        disposeOverlay()
     }
 
     private fun startRuntime() {
@@ -93,6 +93,7 @@ class MainWindow(
         scope.launch { gameDetector.monitorGameLifecycle() }
         scope.launch {
             appSettings.collect {
+                gameDetector.setTrackedExecutableName(it.features.effectiveGameExecutableName())
                 applyRuntimeConfig()
                 updateOverlayVisibility()
             }
@@ -105,8 +106,10 @@ class MainWindow(
         }
         scope.launch {
             gameBounds.collect { bounds ->
-                overlay.updateWindowBounds(bounds ?: defaultDisplayBounds)
-                overlay.repaint()
+                overlay?.let {
+                    it.updateWindowBounds(bounds ?: defaultDisplayBounds)
+                    it.repaint()
+                }
             }
         }
         scope.launch {
@@ -118,6 +121,16 @@ class MainWindow(
         }
         scope.launch {
             gameIsForeground.collect {
+                updateOverlayVisibility()
+            }
+        }
+        scope.launch {
+            gameSessionKind.collect { kind ->
+                if (kind != GameSessionKind.PLAYABLE) {
+                    tearDownRuntime()
+                } else if (gameState.value == GameStatus.IN_PROGRESS) {
+                    ensureLiveClientBound()
+                }
                 updateOverlayVisibility()
             }
         }
@@ -139,18 +152,18 @@ class MainWindow(
                                 gameDetector.startEventsFlow()
                             }
                         }
-                        ensureLiveClientBound()
+                        if (shouldStartRuntime(state, gameSessionKind.value)) {
+                            ensureLiveClientBound()
+                        } else {
+                            tearDownRuntime()
+                        }
                     }
 
                     GameStatus.GAME_OVER,
                     GameStatus.NOT_RUNNING -> {
-                        currentGameService?.close()
-                        currentGameService = null
-                        burndownCalculator = null
-                        boundRuntimeWindowId = null
+                        tearDownRuntime()
                         eventsJob?.cancel()
                         eventsJob = null
-                        overlay.isVisible = false
                     }
 
                     else -> {}
@@ -161,33 +174,73 @@ class MainWindow(
     }
 
     private fun applyRuntimeConfig() {
-        overlay.updateConfig(appSettings.value.toOverlayConfig(_persistedGameSettings.value))
+        overlay?.updateConfig(appSettings.value.toOverlayConfig(_persistedGameSettings.value))
     }
 
     private fun ensureLiveClientBound() {
+        val overlay = ensureOverlayCreated()
         val currentWindowId = gameWindowId.value
         if (currentGameService == null || (currentWindowId != null && boundRuntimeWindowId != currentWindowId)) {
             currentGameService?.close()
-            currentGameService = LiveClientService()
+            currentGameService = liveClientServiceFactory()
             burndownCalculator = BurndownCalculator(overlay, currentGameService!!.activePlayerData)
             boundRuntimeWindowId = currentWindowId
         }
     }
 
     private fun rebindGameRuntime() {
-        currentGameService?.close()
-        currentGameService = null
-        burndownCalculator = null
-        boundRuntimeWindowId = null
-        if (gameState.value == GameStatus.IN_PROGRESS) {
+        tearDownRuntime()
+        if (gameState.value == GameStatus.IN_PROGRESS && gameSessionKind.value == GameSessionKind.PLAYABLE) {
             ensureLiveClientBound()
         }
     }
 
     private fun updateOverlayVisibility() {
         val settings = appSettings.value
-        val visibleByState = gameState.value == GameStatus.IN_PROGRESS
+        val visibleByState = shouldStartRuntime(gameState.value, gameSessionKind.value)
         val visibleByForeground = !settings.features.showOnlyWhileForeground || gameIsForeground.value
-        overlay.isVisible = visibleByState && visibleByForeground
+        overlay?.isVisible = visibleByState && visibleByForeground
+    }
+
+    private fun ensureOverlayCreated(): GameOverlay {
+        overlay?.let { return it }
+        val created = overlayFactory()
+        created.isVisible = false
+        created.updateWindowBounds(gameBounds.value ?: defaultDisplayBounds)
+        created.updateConfig(appSettings.value.toOverlayConfig(_persistedGameSettings.value))
+        overlay = created
+        return created
+    }
+
+    private fun tearDownRuntime() {
+        currentGameService?.close()
+        currentGameService = null
+        burndownCalculator = null
+        boundRuntimeWindowId = null
+        disposeOverlay()
+    }
+
+    private fun disposeOverlay() {
+        overlay?.let {
+            it.isVisible = false
+            it.dispose()
+        }
+        overlay = null
+    }
+
+    internal fun hasOverlayInstance(): Boolean = overlay != null
+
+    internal fun currentSessionKindForTest(): GameSessionKind = gameSessionKind.value
+
+    private fun safeDefaultDisplayBounds(): Rectangle =
+        try {
+            GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
+        } catch (_: HeadlessException) {
+            Rectangle(0, 0, 1920, 1080)
+        }
+
+    internal companion object {
+        fun shouldStartRuntime(state: GameStatus, sessionKind: GameSessionKind): Boolean =
+            state == GameStatus.IN_PROGRESS && sessionKind == GameSessionKind.PLAYABLE
     }
 }
