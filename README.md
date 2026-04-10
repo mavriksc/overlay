@@ -1,5 +1,5 @@
 # overlay
-[just give me the exe](./build/jpackage/overlay/overlay.exe)
+[just give me the exe](./build/jpackage/overlay.zip)
 
 Windows desktop overlay for League of Legends that adds simple training cues on top of the game.
 

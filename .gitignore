@@ -4,7 +4,7 @@ build/*
 build/jpackage/*
 !build/jpackage/overlay/
 build/jpackage/overlay/*
-!build/jpackage/overlay/overlay.exe
+!build/jpackage/overlay/overlay.zip
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
